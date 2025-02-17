@@ -1,4 +1,4 @@
 import { mount } from "svelte";
-import TelegramApp from "../mini_app/main_bot_app.svelte";
+import MainBotMiniApp from "../mini_app/main_bot_app.svelte";
 
-mount(TelegramApp, { target: document.body });
+mount(MainBotMiniApp, { target: document.body });

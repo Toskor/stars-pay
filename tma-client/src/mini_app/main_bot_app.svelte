@@ -3,6 +3,8 @@
   import type { Bot, ControlledBots } from "./tg_types";
   import ControlledBotRepresentation from "./controlled_bot_representation.svelte";
   import Modal from "./modal.svelte";
+  import Button from "../../../../telegram-ui/src/lib/components/blocks/button.svelte";
+  // import List from "$tgui";
 
   const api_url =
     "https://advanced-oddly-herring.ngrok-free.app/stardonationservice/";
@@ -93,72 +95,41 @@
 
   let selected_bot: Bot | null = $state(null);
   let show_bot_settings_modal = $state(false);
-  // function openModal(bot) {
-  //   selected_bot = bot;
-  //   show_bot_settings_modal = true;
-  // }
+
+  let platform_name = $state("");
+  let theme = $state("");
 
   onMount(async () => {
-    controlled_bots = await getControlledBots();
-    console.log(controlled_bots);
+    // controlled_bots = await getControlledBots();
+    platform_name = app.platform;
+    theme = app.colorScheme;
   });
 </script>
 
-<div class="container">
-  {#if controlled_bots?.bots.length == 0}
-    <span
-      class="text-center text-lg font-semibold text-gray-600 block mt-4 mb-4"
-    >
-      You have no bots. Just add one!
-    </span>
-  {:else}
-    <table class="table w-full m-4">
-      <tbody>
-        <!-- {#each controlled_bots.bots as bot (bot.id)}
-          <tr>
-            <td>
-              <img
-                src={bot.avatar_url}
-                alt={bot.username}
-                class="rounded-full w-12 h-12"
-              />
-            </td>
-            <td>{bot.username}</td>
-            <td>{bot.controll_type}</td>
-            <td>
-              <button class="btn btn-primary" onclick={() => openModal(bot)}
-                >Settings</button
-              >
-            </td>
-          </tr>
-        {/each} -->
-      </tbody>
-    </table>
-  {/if}
+<div class="wrapper">
+  platform_name: {platform_name}
+  <br />
+  theme: {theme}
 
-  <div class="divider"></div>
+  <Button onclick={() => {
+    platform_name = app.platform;
+    theme = app.colorScheme;
+  }}>upd</Button>
+</div>
 
-  <button class="btn btn-primary btn-block" onclick={toggleAddForm}
-    >Add Bot</button
-  >
 
+<!-- helpfull code -->
+<!-- <div class="container">
   <Modal bind:showModal={show_add_bot_modal}>
     {#snippet header()}
       <h3 class="text-lg font-bold mb-4">Add Bot</h3>
     {/snippet}
 
     <div class="join">
-      <input
-        class="input input-bordered join-item"
-        bind:value={bot_token}
-        placeholder="Bot token"
-      />
       <button class="btn join-item rounded-r-full" onclick={handleAddBot}
         >Add</button
       >
     </div>
-
-    <div class="divider"></div>
 
     <div class="join join-vertical">
       <button
@@ -167,78 +138,9 @@
           app.openTelegramLink("https://t.me/botfather");
         }}>Go to BotFather</button
       >
-
-      <button class="btn btn-primary btn-outline m-2" onclick={() => {}}
-        >Success add bot alert</button
-      >
-      <button class="btn btn-primary btn-outline m-2" onclick={() => {}}
-        >Error add bot alert</button
-      >
     </div>
-  </Modal>
-
-  <!-- <Modal bind:showModal={show_bot_settings_modal}>
-    {#snippet header()}
-      <h3 class="text-lg font-bold mb-4">Bot Settings</h3>
-    {/snippet}
-    {#if selected_bot}
-      <div class="text-center">
-        <img
-          src={selected_bot.avatar_url}
-          alt={selected_bot.username}
-          class="rounded-full w-24 h-24 mx-auto"
-        />
-        <h4 class="text-xl font-semibold mt-2">{selected_bot.username}</h4>
-      </div>
-
-      <div class="divider"></div>
-
-      <h5 class="text-lg font-bold mb-2">Administrators</h5>
-      <ul>
-        {#each selected_bot.admins as admin}
-          <li class="flex items-center mb-2">
-            <img
-              src={admin.avatar_url}
-              alt={admin.username}
-              class="rounded-full w-8 h-8 mr-2"
-            />
-            <span>@{admin.username}</span>
-
-            <details class="dropdown dropdown-end ml-auto">
-              <summary class="btn m-1">⋮</summary>
-              <ul
-                class="menu dropdown-content bg-base-100 rounded-box z-[1] w-52 p-2 shadow"
-              >
-                <li>
-                  <button
-                    onclick={() => {
-                      //todo
-                    }}>Remove Admin</button
-                  >
-                </li>
-              </ul>
-            </details>
-          </li>
-        {/each}
-      </ul>
-
-      <div class="divider"></div>
-
-      <div class="flex flex-col space-y-2">
-        <button class="btn btn-primary" onclick={() => {}}> Add Admin </button>
-        <button class="btn btn-secondary" onclick={() => {}}>
-          Remove Admin
-        </button>
-
-        <button class="btn btn-info" onclick={() => {}}> Get invoice </button>
-        <button class="btn btn-warning" onclick={() => {}}>
-          Change Owner
-        </button>
-        <button class="btn btn-danger" onclick={() => {}}> Delete Bot </button>
-      </div>
-    {/if}
-  </Modal> -->
-</div>
+  </Modal> 
+</div> -->
 
 <style>
 </style>

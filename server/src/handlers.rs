@@ -19,7 +19,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::{
     api, json,
     main_bot::{self, MAIN_BOT_ID},
-    AppState, HTML_APP,
+    AppState, HTML_MINI_APP,
 };
 
 // pub async fn user_check(
@@ -163,10 +163,10 @@ pub async fn mini_app(Path(bot_id): Path<String>) -> impl IntoResponse {
     //todo add to app_config error version
     //todo need return error page (mb if payment is expired return special page)
 
-    let path = format!("tg-stars/src/mini_app_sources/{}.html", bot_id);
+    let path = format!("server/src/mini_app_sources/{}.html", bot_id);
     let file = match File::open(&path).await {
         Ok(file) => Ok(file),
-        Err(_) => File::open("tg-stars/src/mini_app_sources/404.html").await,
+        Err(_) => File::open("server/src/mini_app_sources/404.html").await,
     };
 
     match file {
@@ -271,7 +271,9 @@ pub async fn add_bot_admin(
 
     match security_check {
         Ok(Some(user_id)) => {
-            let res = state.add_bot_admin(user_id, &payload.bot_id, payload.admin_id).await;
+            let res = state
+                .add_bot_admin(user_id, &payload.bot_id, payload.admin_id)
+                .await;
             match res {
                 Ok(()) => (
                     StatusCode::OK,
@@ -310,7 +312,9 @@ pub async fn remove_bot_admin(
 
     match security_check {
         Ok(Some(user_id)) => {
-            let res = state.remove_bot_admin(user_id, &payload.bot_id, payload.admin_id).await;
+            let res = state
+                .remove_bot_admin(user_id, &payload.bot_id, payload.admin_id)
+                .await;
             match res {
                 Ok(()) => (
                     StatusCode::OK,

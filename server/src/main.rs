@@ -23,9 +23,9 @@ mod handlers;
 pub mod json;
 pub mod main_bot;
 
-const PATH_TO_DIST: &str = "../../tma-client/dist";
-const HTML_APP: &str = "";// include_str!("../../web-widgets/dist/mini_app.html");
-const HTML_MAIN_APP: &str = "";// include_str!("../../web-widgets/dist/main_bot_app.html");
+const PATH_TO_DIST: &str = "../../tma-client/dist/src/pages";
+const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
+const HTML_MAIN_BOT_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
@@ -106,6 +106,7 @@ impl AppState {
             .await
             .unwrap();
 
+        //without main bot
         self.update_mini_app_sources().await.unwrap();
         Ok(())
     }
@@ -215,13 +216,11 @@ impl AppState {
         println!("path: {}", path);
 
         let html = if bot_id == MAIN_BOT_ID {
-            HTML_MAIN_APP.to_string()
+            HTML_MAIN_BOT_MINI_APP.to_string()
         } else {
             let config = self.db.get_bot_config(bot_id).await?;
-            HTML_APP.replace(r#"{"json_to_replace":""}"#, &config)
+            HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &config)
         };
-
-        
 
         let mut file = OpenOptions::new()
             .write(true)
@@ -229,8 +228,6 @@ impl AppState {
             .create(true)
             .open(&path)
             .await?;
-
-        println!("html");
 
         file.write_all(html.as_bytes()).await?;
 
@@ -247,7 +244,7 @@ impl AppState {
             }
 
             let path = format!("server/src/mini_app_sources/{}.html", bot_id);
-            let html = HTML_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
+            let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
 
             let mut file = OpenOptions::new()
                 .write(true)
@@ -274,7 +271,7 @@ impl AppState {
 
         let path = format!("server/src/mini_app_sources/{}.html", bot_id);
 
-        let html = HTML_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
+        let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
 
         let mut file = OpenOptions::new()
             .write(true)
