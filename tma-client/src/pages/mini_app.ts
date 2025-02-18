@@ -1,4 +1,5 @@
 import { mount } from "svelte";
-import TelegramApp from "../mini_app/telegram_app.svelte";
+import MiniApp from "../mini_app/telegram_app.svelte";
+import "telegram-ui/styles";
 
-mount(TelegramApp, { target: document.body });
+mount(MiniApp, { target: document.body });

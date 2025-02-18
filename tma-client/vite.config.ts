@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { sveltekit } from "@sveltejs/kit/vite";
 import { resolve } from "path";
 
 const target = process.env.TARGET ?? "main_bot_mini_app";
@@ -23,7 +24,7 @@ export default defineConfig({
     },
   },
   plugins: [
-    svelte(),
+    sveltekit(),
     viteSingleFile({
       useRecommendedBuildConfig: true,
     }),
