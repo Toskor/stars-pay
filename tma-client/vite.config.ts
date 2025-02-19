@@ -5,6 +5,7 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import { resolve } from "path";
 
 const target = process.env.TARGET ?? "main_bot_mini_app";
+const isDev = process.env.NODE_ENV === "development";
 
 var input = {
   main_bot_mini_app: resolve(__dirname, "src/pages/main_bot_mini_app.html"),
@@ -17,14 +18,9 @@ if (target === "mini_app") {
   };
 }
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      $tgui: resolve(__dirname, "../../telegram-ui/src/lib/components/blocks/list.svelte"),
-    },
-  },
+const fileGenerationConfig = {
   plugins: [
-    sveltekit(),
+    svelte(),
     viteSingleFile({
       useRecommendedBuildConfig: true,
     }),
@@ -40,4 +36,21 @@ export default defineConfig({
       },
     },
   },
-});
+};
+
+const devConfig = {
+  plugins: [sveltekit()],
+  build: {
+    emptyOutDir: false,
+    outDir: "./dist",
+    rollupOptions: {
+      input,
+      output: {
+        entryFileNames: "[name].js",
+        assetFileNames: "[name].[ext]",
+      },
+    },
+  },
+};
+
+export default defineConfig(isDev ? devConfig : fileGenerationConfig);
