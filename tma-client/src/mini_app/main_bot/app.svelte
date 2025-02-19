@@ -1,21 +1,23 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import type { Bot, ControlledBots } from "./tg_types";
-  import ControlledBotRepresentation from "./controlled_bot_representation.svelte";
-
-  import { Button } from "telegram-ui";
-  import { List } from "telegram-ui";
-
-  import { Title } from "telegram-ui";
-  import { Divider } from "telegram-ui";
-
   import "telegram-ui/styles";
+  import type { Page } from "./types";
+  import PageMain from "./page_main.svelte";
+
+  import { onMount } from "svelte";
+
+  import type { Bot, ControlledBots } from "../tg_types";
+  import ControlledBotRepresentation from "../controlled_bot_representation.svelte";
+  import { Title } from "telegram-ui";
+  import PageEdit from "./page_edit.svelte";
+  import PageCreate from "./page_create.svelte";
 
   const api_url =
     "https://advanced-oddly-herring.ngrok-free.app/stardonationservice/";
 
-  //@ts-ignore
-  // let app = window.Telegram.WebApp;
+  //todo remove safety check, add just for testing
+  let app =
+    //@ts-ignore
+    (typeof window !== "undefined" && window.Telegram?.WebApp) || undefined;
 
   // let controlled_bots: ControlledBots | null = $state({
   //   bots: [
@@ -85,30 +87,24 @@
   //   }
   // }
 
-  // let show_add_bot_modal = $state(false);
-  // let bot_token = $state("");
-  // function toggleAddForm() {
-  //   show_add_bot_modal = !show_add_bot_modal;
-  // }
-
-  // function handleAddBot() {
-  //   if (bot_token) {
-  //     addBotQuery(bot_token);
-  //     bot_token = "";
-  //     show_add_bot_modal = false;
-  //   }
-  // }
-
-  // let selected_bot: Bot | null = $state(null);
-  // let show_bot_settings_modal = $state(false);
-
   let platform_name = $state("");
-  let theme = $state("");
   let isIOS = $state(true);
 
+  let currentPage: Page = $state("main");
+  function navigateTo(page: Page) {
+    currentPage = page;
+    app.BackButton.isVisible = page !== "main";
+  }
+
   onMount(() => {
+    //todo remove
+    platform_name = app.platform;
+
+    app.BackButton.onClick(() => {
+      navigateTo("main");
+    });
+
     document.body.classList.add("wrapper");
-    // document.body.classList.add("wrapper--dark");
     document.body.classList.add("wrapper--horizontal-limit");
     if (isIOS) {
       document.body.classList.add("wrapper-ios");
@@ -116,7 +112,6 @@
 
     return () => {
       document.body.classList.remove("wrapper");
-      // document.body.classList.remove("wrapper--dark");
       document.body.classList.remove("wrapper--horizontal-limit");
       if (isIOS) {
         document.body.classList.remove("wrapper-ios");
@@ -127,15 +122,16 @@
 
 <div class="wrapper">
   platform_name: {platform_name}
-  <br />
-  theme: {theme}
+</div>
 
-  <Button
-    onclick={() => {
-      platform_name = "test";
-      theme = "test";
-    }}>upd</Button
-  >
+<div>
+  {#if currentPage === "main"}
+    <PageMain {navigateTo} />
+  {:else if currentPage === "edit"}
+    <PageEdit {navigateTo} />
+  {:else if currentPage === "create"}
+    <PageCreate {navigateTo} />
+  {/if}
 </div>
 
 <!-- helpfull code -->

@@ -12,3 +12,9 @@ echo "mini_app"
 TARGET="mini_app" bun run build
 
 echo "Build complete!"
+
+cd ..
+
+echo "Starting Rust server..."
+cd tg-stars/server
+cargo run

@@ -25,7 +25,8 @@ pub mod main_bot;
 
 const PATH_TO_DIST: &str = "../../tma-client/dist/src/pages";
 const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
-const HTML_MAIN_BOT_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
+const HTML_MAIN_BOT_MINI_APP: &str =
+    include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
