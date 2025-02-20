@@ -5,9 +5,6 @@
 
   import { onMount } from "svelte";
 
-  import type { Bot, ControlledBots } from "../tg_types";
-  import ControlledBotRepresentation from "../controlled_bot_representation.svelte";
-  import { Title } from "telegram-ui";
   import PageEdit from "./page_edit.svelte";
   import PageCreate from "./page_create.svelte";
 
@@ -87,19 +84,17 @@
   //   }
   // }
 
-  let platform_name = $state("");
   let isIOS = $state(true);
 
   let currentPage: Page = $state("main");
   function navigateTo(page: Page) {
     currentPage = page;
     app.BackButton.isVisible = page !== "main";
+    window.scrollTo(0, 0);
   }
 
   onMount(() => {
-    //todo remove
-    platform_name = app.platform;
-
+    app.expand();
     app.BackButton.onClick(() => {
       navigateTo("main");
     });
@@ -119,10 +114,6 @@
     };
   });
 </script>
-
-<div class="wrapper">
-  platform_name: {platform_name}
-</div>
 
 <div>
   {#if currentPage === "main"}
@@ -159,4 +150,7 @@
 </div> -->
 
 <style>
+  :global(body) {
+    user-select: none;
+  }
 </style>

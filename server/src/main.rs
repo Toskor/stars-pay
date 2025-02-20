@@ -86,22 +86,22 @@ impl AppState {
         }
 
         //second_test_1
-        match self
-            .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
-            .await
-        {
-            Ok(_) => println!("Bot added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self
+        //     .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
+        //     .await
+        // {
+        //     Ok(_) => println!("Bot added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
         //star_donation
-        match self
-            .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
-            .await
-        {
-            Ok(_) => println!("Bot added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self
+        //     .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
+        //     .await
+        // {
+        //     Ok(_) => println!("Bot added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
         self.update_mini_app_source(MAIN_BOT_ID.to_string())
             .await

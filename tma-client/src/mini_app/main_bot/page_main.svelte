@@ -31,7 +31,7 @@
     {/snippet}
 
     {#snippet children()}
-      <Cell platform="ios" style="background-color: var(--tgui--bg_color)">
+      <Cell platform="ios">
         {#snippet before()}
           <Avatar
             size={48}
