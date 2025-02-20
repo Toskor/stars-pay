@@ -22,10 +22,6 @@
   let isIOS = $derived(platform === "ios");
 </script>
 
-{#snippet icon()}
-  <AddCircleIcon isFill={true} />
-{/snippet}
-
 <div class="layout">
   <Image
     src="https://avatars.mds.yandex.net/i?id=0b56680182693c18b90b7e5047abbe27db7bd586-9198264-images-thumbs&n=13"
@@ -52,12 +48,15 @@
   >
 
   <Button
-    before={icon}
     mode="filled"
     size="l"
     stretched={true}
     onclick={() => console.log("clicked")}
   >
     Register Bot
+
+    {#snippet before()}
+      <AddCircleIcon isFill={true} />
+    {/snippet}
   </Button>
 </div>
