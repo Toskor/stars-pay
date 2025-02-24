@@ -1,5 +1,6 @@
 <script lang="ts">
   import "telegram-ui/styles";
+  import { platform } from "telegram-ui";
   import type { Page } from "./types";
   import PageMain from "./page_main.svelte";
 
@@ -8,8 +9,7 @@
   import PageEdit from "./page_edit.svelte";
   import PageCreate from "./page_create.svelte";
 
-  const api_url =
-    "https://advanced-oddly-herring.ngrok-free.app/stardonationservice/";
+
 
   //todo remove safety check, add just for testing
   let app =
@@ -84,7 +84,7 @@
   //   }
   // }
 
-  let isIOS = $state(true);
+
 
   let currentPage: Page = $state("main");
   function navigateTo(page: Page) {
@@ -98,6 +98,8 @@
     app.BackButton.onClick(() => {
       navigateTo("main");
     });
+
+    let isIOS = platform() === "ios";
 
     document.body.classList.add("wrapper");
     document.body.classList.add("wrapper--horizontal-limit");

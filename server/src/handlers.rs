@@ -202,8 +202,14 @@ pub async fn controlled_bots(
         Ok(Some(user_id)) => {
             //todo bad unwrap
             let controlled_bots = state.get_controlled_bots(user_id).await.unwrap();
-            let json_controlled_bots = serde_json::to_value(&controlled_bots).unwrap();
-            (StatusCode::OK, Json(json_controlled_bots))
+
+            let main_page_props = json::MainBotMainPageProps {
+                bots: vec![],
+                has_suspended_bots: false,
+            };
+
+            let json_value = serde_json::to_value(&main_page_props).unwrap();
+            (StatusCode::OK, Json(json_value))
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
@@ -484,7 +490,7 @@ fn check_hash(init_data: &str, token: &str) -> Option<json::WebAppUser> {
     let signature = mac.finalize().into_bytes();
 
     if let Some(hash) = data.get("hash") {
-        println!("hash: {}\nsign: {}", hash, hex::encode(signature));
+        // println!("hash: {}\nsign: {}", hash, hex::encode(signature));
 
         if hex::encode(signature) == *hash {
             if let Some(user) = data.get("user") {

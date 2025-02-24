@@ -34,14 +34,13 @@
   </div>
 
   <Input
-    platform="ios"
     placeholder="Your bot token"
     header="Input"
     bind:value
     stretched={true}
   />
 
-  <SectionFooter {platform} centered={false}
+  <SectionFooter centered={false}
     >Create bot with @botfather and paste here bot token
     <br />
     You will be owner of this bot by default</SectionFooter

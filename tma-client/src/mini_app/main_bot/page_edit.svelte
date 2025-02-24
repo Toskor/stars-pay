@@ -27,7 +27,7 @@
   onMount(() => {});
 </script>
 
-<List {platform}>
+<List>
   <div class="header--center-container">
     <Avatar
       size={128}
@@ -35,8 +35,8 @@
     />
   </div>
 
-  <Section {platform} header="Owner">
-    <Cell {platform}>
+  <Section header="Owner">
+    <Cell>
       {#snippet before()}
         <Avatar
           size={48}
@@ -54,10 +54,10 @@
     </Cell>
   </Section>
 
-  <Section {platform}>
+  <Section>
     {#snippet header()}
       <div class="header-row">
-        <SectionHeader {platform}>Bot admins</SectionHeader>
+        <SectionHeader>Bot admins</SectionHeader>
         <Button mode="plain" size="s">Add</Button>
       </div>
     {/snippet}
@@ -107,7 +107,7 @@
     </Cell>
   </Section>
 
-  <Section {platform}>
+  <Section>
     <Accordion>
       <AccordionSummary>
         <Text weight={3}>Danger Zone</Text>

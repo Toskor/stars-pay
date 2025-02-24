@@ -96,13 +96,11 @@ pub struct UpdateConfigQueryParam {
 #[derive(Deserialize)]
 pub struct WebAppUser {
     pub id: u64,
+    pub first_name: String,
+    pub last_name: String,
     pub username: String,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct ControlledBots {
-    pub owner_bots: Vec<String>,
-    pub admin_bots: Vec<String>,
+    pub language_code: String,
+    pub photo_url: String,
 }
 
 #[derive(Deserialize)]
@@ -120,6 +118,42 @@ pub struct AddBotAdminQueryParam {
 pub struct RemoveBotAdminQueryParam {
     pub bot_id: String,
     pub admin_id: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct ControlledBots {
+    pub owner_bots: Vec<String>,
+    pub admin_bots: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct MainBotMainPageProps {
+    pub bots: Vec<Bot>,
+    pub has_suspended_bots: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Bot {
+    pub id: u64,
+    pub name: String,
+    pub avatar: String,
+
+    pub user_role: String,
+    pub owner: User,
+    pub admins: Vec<User>,
+
+    pub suspended: bool,
+    pub balance: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct User {
+    pub id: u64,
+    //ex torsor
+    pub username: String,
+    //ex Григорий Борисов
+    pub name: String,
+    pub avatar_url: String,
 }
 
 #[cfg(test)]
