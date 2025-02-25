@@ -7,7 +7,7 @@ use rusqlite::functions::FunctionFlags;
 use crate::UserRole;
 
 #[derive(Debug, Clone)]
-pub struct Bot {
+pub struct DBBot {
     ///bot username without "bot" end
     pub id: String,
 
@@ -19,7 +19,7 @@ pub struct Bot {
     // admins id vec in json format
     pub admins: Vec<u64>,
 }
-impl Bot {
+impl DBBot {
     pub fn new(
         id: String,
         token: String,
@@ -27,7 +27,7 @@ impl Bot {
         owner: u64,
         admins: Vec<u64>,
     ) -> Self {
-        Bot {
+        DBBot {
             id,
             token,
             secret_token,
@@ -76,6 +76,7 @@ impl DataBase {
         })
         .await?;
 
+        //todo improve sql index to use in get_bots_by_admin_id
         conn.call(move |conn| {
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS admins_contains ON bots ( admins_contains(admins, 1) )",
@@ -87,49 +88,79 @@ impl DataBase {
         Ok(Self { conn })
     }
 
-    pub async fn get_bots_by_admin_id(&self, admin_id: u64) -> Result<Vec<String>> {
+    pub async fn get_bots_by_admin_id(&self, admin_id: u64) -> Result<Vec<DBBot>> {
         let conn = &self.conn;
-        let bots_ids = conn
+        let search_pattern = format!("%{}%", admin_id);
+
+        let bots = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    "SELECT id FROM bots WHERE admins_contains(admins, :admin_id) == 1",
+                    "SELECT id, token, secret_token, owner, admins FROM bots 
+                    WHERE admins LIKE :search_pattern",
                 )?;
                 let query_result =
-                    stmt.query_map(named_params! { ":admin_id": admin_id }, |row| {
+                    stmt.query_map(named_params! { ":search_pattern": search_pattern }, |row| {
                         let id: String = row.get(0)?;
-                        Ok(id)
+                        let token: String = row.get(1)?;
+                        let secret_token: String = row.get(2)?;
+                        let owner: u64 = row.get(3)?;
+                        let admins_json = row.get_ref(4)?.as_str()?;
+                        let admins: Vec<u64> =
+                            serde_json::from_str(admins_json).map_err(map_serde_err)?;
+
+                        if !admins.contains(&owner) {
+                            Ok(Some(DBBot {
+                                id,
+                                token,
+                                secret_token,
+                                owner,
+                                admins,
+                            }))
+                        } else {
+                            Ok(None)
+                        }
                     })?;
-                let mut bots_ids: Vec<String> = vec![];
-                for bot_id in query_result.into_iter() {
-                    bots_ids.push(bot_id?);
+
+                let mut bots: Vec<DBBot> = vec![];
+                for bot_option in query_result.into_iter() {
+                    if let Some(bot) = bot_option? {
+                        bots.push(bot);
+                    }
                 }
-                Ok::<Vec<String>, async_rusqlite::Error>(bots_ids)
+                Ok::<Vec<DBBot>, async_rusqlite::Error>(bots)
             })
             .await?;
-        Ok(bots_ids)
+        Ok(bots)
     }
 
-    pub async fn get_bots_by_owner_id(&self, owner_id: u64) -> Result<Vec<String>> {
+    pub async fn get_bots_by_owner_id(&self, owner_id: u64) -> Result<Vec<DBBot>> {
         let conn = &self.conn;
-        let bots_ids = conn
+        let bots = conn
             .call(move |conn| {
                 let mut stmt =
-                    conn.prepare_cached("SELECT id FROM bots WHERE owner = :owner_id")?;
+                    conn.prepare_cached("SELECT id, token, secret_token, owner, admins FROM bots WHERE owner = :owner_id")?;
                 let bots_map = stmt.query_map(named_params! { ":owner_id": owner_id }, |row| {
                     let id: String = row.get(0)?;
-                    Ok(id)
+                    let token: String = row.get(1)?;
+                    let secret_token: String = row.get(2)?;
+                    let owner: u64 = row.get(3)?;
+
+                    let admins_json = row.get_ref(4)?.as_str()?;
+                    let admins: Vec<u64> =
+                        serde_json::from_str(admins_json).map_err(map_serde_err)?;
+                    Ok(DBBot { id, token, secret_token, owner, admins })
                 })?;
-                let mut bots_ids: Vec<String> = vec![];
-                for bot_id in bots_map.into_iter() {
-                    bots_ids.push(bot_id?);
+                let mut bots: Vec<DBBot> = vec![];
+                for bot in bots_map.into_iter() {
+                    bots.push(bot?);
                 }
-                Ok::<Vec<String>, async_rusqlite::Error>(bots_ids)
+                Ok::<Vec<DBBot>, async_rusqlite::Error>(bots)
             })
             .await?;
-        Ok(bots_ids)
+        Ok(bots)
     }
 
-    pub async fn get_bot(&self, bot_id: String) -> Result<Bot> {
+    pub async fn get_bot(&self, bot_id: String) -> Result<DBBot> {
         let conn = &self.conn;
 
         let bot = conn
@@ -142,7 +173,7 @@ impl DataBase {
                     let admins: Vec<u64> =
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
 
-                    Ok(Bot {
+                    Ok(DBBot {
                         id: row.get(0)?,
                         token: row.get(1)?,
                         secret_token: row.get(2)?,
@@ -158,7 +189,7 @@ impl DataBase {
         Ok(bot)
     }
 
-    pub async fn insert_bot(&self, bot: Bot, app_config: String) -> Result<()> {
+    pub async fn insert_bot(&self, bot: DBBot, app_config: String) -> Result<()> {
         let conn = &self.conn;
 
         let admins_json = serde_json::to_string(&bot.admins)?;
@@ -181,7 +212,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_bot(&self, bot: Bot) -> Result<()> {
+    pub async fn update_bot(&self, bot: DBBot) -> Result<()> {
         let conn = &self.conn;
 
         let admins_json = serde_json::to_string(&bot.admins)?;
@@ -280,8 +311,7 @@ impl DataBase {
             let admins_json: String =
                 stmt.query_row(named_params! { ":id": &bot_id }, |row| row.get(0))?;
 
-            let mut admins: Vec<u64> =
-                serde_json::from_str(&admins_json).map_err(map_serde_err)?;
+            let mut admins: Vec<u64> = serde_json::from_str(&admins_json).map_err(map_serde_err)?;
             admins.push(admin_id);
             let admins_json = serde_json::to_string(&admins).map_err(map_serde_err)?;
 
