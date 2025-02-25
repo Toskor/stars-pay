@@ -11,6 +11,7 @@
     Section,
     SectionHeader,
     Divider,
+    Skeleton,
   } from "telegram-ui";
 
   let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
@@ -36,10 +37,22 @@
   });
 </script>
 
+{#snippet placeholder()}
+  <div style="height: 75px; width: 100%;"></div>
+{/snippet}
+
 {#if isLoading}
-  <div class="loading-container">
-    <div class="loading-text">Loading bots...</div>
-  </div>
+  <Skeleton style="margin-bottom: 12px;">
+    {@render placeholder()}
+  </Skeleton>
+
+  <Skeleton style="margin-bottom: 12px;">
+    {@render placeholder()}
+  </Skeleton>
+
+  <Skeleton>
+    {@render placeholder()}
+  </Skeleton>
 {:else if error}
   <div class="error-container">
     <div class="error-text">Error: {error}</div>
@@ -136,3 +149,22 @@
     </Section>
   </List>
 {/if}
+
+<style>
+  .skeleton-margin {
+    margin-bottom: 12px;
+  }
+
+  .error-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 24px;
+  }
+
+  .error-text {
+    color: var(--tg-theme-text-color);
+    text-align: center;
+  }
+</style>
