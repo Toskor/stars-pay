@@ -3,9 +3,9 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use db::{Bot, DataBase};
+use db::{DBBot, DataBase};
 use handlers::{
-    add_bot, add_bot_admin, controlled_bots, create_invoice, handler_print_2, mini_app,
+    add_bot, add_bot_admin, create_invoice, fetch_user_bots, handler_print_2, mini_app,
     remove_bot_admin, update_config, webhook_handler,
 };
 use lru::LruCache;
@@ -58,9 +58,16 @@ impl UserRole {
     }
 }
 
+//for AppState
+#[derive(Debug)]
+pub struct ControlledBots {
+    pub owner_bots: Vec<DBBot>,
+    pub admin_bots: Vec<DBBot>,
+}
+
 //todo sometimes long delay in webhook (mb when change webhook url)
 pub struct AppState {
-    pub cache: Mutex<LruCache<String, Bot>>,
+    pub cache: Mutex<LruCache<String, DBBot>>,
     pub db: DataBase,
 }
 
@@ -114,7 +121,7 @@ impl AppState {
 
     //todo add new bot:  set cmd,
     pub async fn add_bot(&self, token: &str, owner: u64) -> Result<()> {
-        let tg_api_url = format!("https://api.telegram.org/bot{}/", token);
+        let tg_api_url = api::get_tg_api_url(token);
         let bot_info = api::get_bot_info(&tg_api_url).await?;
 
         let name = bot_info.result.username.to_lowercase();
@@ -147,7 +154,7 @@ impl AppState {
         let secret_token = api::generate_secret_token();
         api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
 
-        let bot: Bot = Bot::new(
+        let bot: DBBot = DBBot::new(
             bot_id.to_string(),
             token.to_string(),
             secret_token,
@@ -175,7 +182,7 @@ impl AppState {
         let secret_token = api::generate_secret_token();
         api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
 
-        let bot: Bot = Bot::new(
+        let bot: DBBot = DBBot::new(
             MAIN_BOT_ID.to_string(),
             MAIN_BOT_TOKEN.to_string(),
             secret_token,
@@ -188,7 +195,7 @@ impl AppState {
     }
 
     ///without app_config
-    pub async fn update_bot(&self, bot: Bot) -> Result<()> {
+    pub async fn update_bot(&self, bot: DBBot) -> Result<()> {
         self.db.update_bot(bot.clone()).await?;
 
         let mut cache = self.cache.lock().await;
@@ -299,7 +306,7 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn with_record<T>(&self, bot_id: &str, f: impl FnOnce(&Bot) -> T) -> Result<T> {
+    pub async fn with_record<T>(&self, bot_id: &str, f: impl FnOnce(&DBBot) -> T) -> Result<T> {
         let mut cache = self.cache.lock().await;
 
         if let Some(cache_bot) = cache.get(bot_id) {
@@ -313,15 +320,16 @@ impl AppState {
         Ok(f(&bot))
     }
 
-    pub async fn get_controlled_bots(&self, user_id: u64) -> Result<json::ControlledBots> {
+    pub async fn get_controlled_bots(&self, user_id: u64) -> Result<ControlledBots> {
         let owner_bots = self.db.get_bots_by_owner_id(user_id).await?;
         let admin_bots = self.db.get_bots_by_admin_id(user_id).await?;
 
-        Ok(json::ControlledBots {
+        Ok(ControlledBots {
             owner_bots,
             admin_bots,
         })
     }
+
     pub async fn add_bot_admin(&self, user_id: u64, bot_id: &str, admin_id: u64) -> Result<()> {
         let role = self
             .with_record(&bot_id, |bot_row| {
@@ -388,7 +396,7 @@ async fn main() {
         .route("/:bot_id/createInvoice", post(create_invoice))
         .route("/:bot_id/updateConfig", post(update_config))
         //main bot routes
-        .route("/stardonationservice/controlledBots", get(controlled_bots))
+        .route("/stardonationservice/controlledBots", get(fetch_user_bots))
         .route("/stardonationservice/addBot", post(add_bot))
         .route("/stardonationservice/addBotAdmin", post(add_bot_admin))
         .route(

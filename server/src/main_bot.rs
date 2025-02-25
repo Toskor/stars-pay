@@ -18,7 +18,10 @@ pub async fn parse_update(update: &json::Update, tg_api_url: &str) -> Result<Val
 }
 
 pub async fn get_full_user(user_id: &str, tg_api_url: &str) -> Result<()> {
-    let url = format!("{}/bot{}/getChat?chat_id={}", tg_api_url, MAIN_BOT_TOKEN, user_id);
+    let url = format!(
+        "{}/bot{}/getChat?chat_id={}",
+        tg_api_url, MAIN_BOT_TOKEN, user_id
+    );
     let uri = Uri::from_str(&url).unwrap();
 
     let body = serde_json::json!({
@@ -38,6 +41,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_query() {
-        get_full_user("@torsor", "https://api.telegram.org").await.unwrap();
+        get_full_user("348135868", "https://api.telegram.org")
+            .await
+            .unwrap();
     }
 }

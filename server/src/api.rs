@@ -7,6 +7,9 @@ use hyper::{header, HeaderMap, StatusCode};
 pub fn generate_secret_token() -> String {
     uuid::Uuid::new_v4().to_string()
 }
+pub fn get_tg_api_url(token: &str) -> String {
+    format!("https://api.telegram.org/bot{}/", token)
+}
 
 pub async fn set_tg_webhook(tg_api_url: &str, webhook_url: &str, secret_token: &str) -> Result<()> {
     let url_param = format!(
@@ -110,14 +113,6 @@ pub async fn create_invoice_link(
     }
 }
 
-pub async fn get_bot_info(tg_api_url: &str) -> Result<json::BotInfo> {
-    let uri = hyper::Uri::from_str(&format!("{}getMe", tg_api_url)).unwrap();
-
-    let res = integrations::http::get(&uri, None).await?;
-
-    Ok(res.to_json()?)
-}
-
 pub async fn set_menu_button(tg_api_url: &str, button_text: &str, button_url: &str) -> Result<()> {
     let uri = hyper::Uri::from_str(&format!("{}setChatMenuButton", tg_api_url)).unwrap();
 
@@ -145,6 +140,25 @@ pub async fn set_menu_button(tg_api_url: &str, button_text: &str, button_url: &s
         let err: json::Error = res.to_json()?;
         Err(anyhow::anyhow!("{}", err.description))
     }
+}
+
+pub async fn get_bot_info(token: &str) -> Result<json::BotInfo> {
+    let tg_api_url = get_tg_api_url(token);
+    let uri = hyper::Uri::from_str(&format!("{}getMe", tg_api_url)).unwrap();
+
+    let res = integrations::http::get(&uri, None).await?;
+
+    Ok(res.to_json()?)
+}
+
+pub async fn get_user_info(token: &str, user_id: &str) -> Result<json::UserInfo> {
+    //getChat
+    let tg_api_url = get_tg_api_url(token);
+    let uri = hyper::Uri::from_str(&format!("{}getChat?chat_id={}", tg_api_url, user_id)).unwrap();
+
+    let res = integrations::http::get(&uri, None).await?;
+
+    Ok(res.to_json()?)
 }
 
 #[cfg(test)]

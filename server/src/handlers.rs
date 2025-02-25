@@ -19,7 +19,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::{
     api, json,
     main_bot::{self, MAIN_BOT_ID},
-    AppState, HTML_MINI_APP,
+    AppState, ControlledBots, HTML_MINI_APP,
 };
 
 // pub async fn user_check(
@@ -185,7 +185,7 @@ pub async fn mini_app(Path(bot_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-pub async fn controlled_bots(
+pub async fn fetch_user_bots(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
@@ -202,13 +202,8 @@ pub async fn controlled_bots(
         Ok(Some(user_id)) => {
             //todo bad unwrap
             let controlled_bots = state.get_controlled_bots(user_id).await.unwrap();
+            let json_value = convert_controlled_bots_to_json_value(controlled_bots);
 
-            let main_page_props = json::MainBotMainPageProps {
-                bots: vec![],
-                has_suspended_bots: false,
-            };
-
-            let json_value = serde_json::to_value(&main_page_props).unwrap();
             (StatusCode::OK, Json(json_value))
         }
         Ok(None) => (
@@ -220,6 +215,52 @@ pub async fn controlled_bots(
             Json(serde_json::json!({"error": e.to_string()})),
         ),
     }
+}
+
+fn convert_controlled_bots_to_json_value(controlled_bots: ControlledBots) -> Value {
+    let mut bots = vec![];
+
+    //todo api::get_bot_info to get name and avatar
+    //todo api::get_user_info to get owner and admins
+    for bot in controlled_bots.owner_bots {
+        bots.push(json::Bot {
+            id: bot.id.parse::<u64>().unwrap(),
+            name: todo!(),
+            avatar: todo!(),
+            user_role: "owner".to_string(),
+            owner: json::User {
+                id: bot.owner,
+                username: todo!(),
+                name: todo!(),
+                avatar_url: todo!(),
+            },
+            admins: todo!(),
+            suspended: None,
+            debt: None,
+        });
+    }
+
+    for bot in controlled_bots.admin_bots {
+        bots.push(json::Bot {
+            id: bot.id.parse::<u64>().unwrap(),
+            name: todo!(),
+            avatar: todo!(),
+            user_role: "admin".to_string(),
+            owner: json::User {
+                id: bot.owner,
+                username: todo!(),
+                name: todo!(),
+                avatar_url: todo!(),
+            },
+            admins: todo!(),
+            suspended: None,
+            debt: None,
+        });
+    }
+
+    let main_page_props = json::MainBotMainPageProps { bots };
+
+    serde_json::to_value(&main_page_props).unwrap()
 }
 
 pub async fn add_bot(

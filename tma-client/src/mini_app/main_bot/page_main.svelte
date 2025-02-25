@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { MainPageProps, Page } from "./types";
+  import { type MainPageProps, type Page, type Bot, testBots } from "./types";
   import { getControlledBots } from "./queries";
   import {
     Button,
@@ -23,11 +23,21 @@
   let error = $state<string | null>(null);
   let data = $state<MainPageProps | null>(null);
 
+  let suspendedBots = $state<Bot[]>([]);
+
   onMount(async () => {
     try {
       const result = await getControlledBots(app.initData);
       if (result.success) {
         data = result.data;
+        //todo remove (for testing)
+        data = {
+          bots: testBots,
+        };
+
+        if (data.bots) {
+          suspendedBots = data.bots.filter((bot) => bot.suspended);
+        }
       } else {
         error = result.error;
       }
@@ -61,7 +71,7 @@
     </Button>
   </div>
 {:else}
-  <span>{JSON.stringify(data)}</span>
+  <!-- <span>{JSON.stringify(data)}</span> -->
   <List>
     <Section>
       {#snippet header()}
@@ -74,87 +84,72 @@
       {/snippet}
 
       {#snippet children()}
-        <Cell>
-          {#snippet before()}
-            <Avatar
-              size={48}
-              src="https://avatars.githubusercontent.com/u/84640980?v=4"
-            />
-          {/snippet}
+        {#each data?.bots || [] as bot, index}
+          <Cell>
+            {#snippet before()}
+              <Avatar size={48} src={bot.avatar} />
+            {/snippet}
 
-          {#snippet after()}
-            <Button mode="bezeled" size="s" onclick={() => navigateTo("edit")}
-              >Edit</Button
-            >
-          {/snippet}
+            {#snippet after()}
+              <Button mode="bezeled" size="s" onclick={() => navigateTo("edit")}
+                >Edit</Button
+              >
+            {/snippet}
 
-          {#snippet children()}
-            YomlDevBot
-          {/snippet}
+            {#snippet children()}
+              {bot.name}
+            {/snippet}
 
-          {#snippet subtitle()}
-            Owner
-          {/snippet}
-        </Cell>
+            {#snippet subtitle()}
+              {bot.userRole}
+            {/snippet}
+          </Cell>
 
-        <Divider />
-
-        <Cell>
-          {#snippet before()}
-            <Avatar
-              size={48}
-              src="https://steamuserimages-a.akamaihd.net/ugc/2100422066956953334/BCFFD0DB0C56F71CD288304540E39FC2FADFD155/?imw=512&imh=341&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true"
-            />
-          {/snippet}
-
-          {#snippet after()}
-            <Button mode="bezeled" size="s" onclick={() => navigateTo("edit")}
-              >Edit</Button
-            >
-          {/snippet}
-
-          {#snippet children()}
-            StarsBot
-          {/snippet}
-
-          {#snippet subtitle()}
-            Admin
-          {/snippet}
-        </Cell>
+          {#if index < (data?.bots?.length || 0) - 1}
+            <Divider />
+          {/if}
+        {/each}
       {/snippet}
     </Section>
 
-    <Section header="Suspended bots">
-      <Cell>
-        {#snippet before()}
-          <Avatar
-            size={48}
-            src="https://i.pinimg.com/originals/d0/cf/a8/d0cfa8b3f2b9aa687e99cdd88bb82f10.jpg"
-          />
+    {#if suspendedBots.length > 0}
+      <Section>
+        {#snippet header()}
+          <SectionHeader>Suspended bots</SectionHeader>
         {/snippet}
 
         {#snippet children()}
-          AliciaStarsBot
-        {/snippet}
+          {#each suspendedBots as bot, index}
+            <Cell>
+              {#snippet before()}
+                <Avatar size={48} src={bot.avatar} />
+              {/snippet}
 
-        {#snippet subtitle()}
-          Need to pay 100$
-        {/snippet}
+              {#snippet children()}
+                {bot.name}
+              {/snippet}
 
-        {#snippet description()}
-          <!-- todo button action -->
-          <Button mode="filled" size="s">Pay</Button>
+              {#snippet subtitle()}
+                Need to pay {bot.debt || 100} stars
+              {/snippet}
+
+              {#snippet description()}
+                <!-- todo button action -->
+                <Button mode="filled" size="s">Pay</Button>
+              {/snippet}
+            </Cell>
+
+            {#if index < suspendedBots.length - 1}
+              <Divider />
+            {/if}
+          {/each}
         {/snippet}
-      </Cell>
-    </Section>
+      </Section>
+    {/if}
   </List>
 {/if}
 
 <style>
-  .skeleton-margin {
-    margin-bottom: 12px;
-  }
-
   .error-container {
     display: flex;
     flex-direction: column;

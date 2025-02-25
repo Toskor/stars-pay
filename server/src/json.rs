@@ -89,6 +89,20 @@ pub struct BotInfoResult {
 }
 
 #[derive(Deserialize)]
+pub struct UserInfo {
+    pub ok: bool,
+    pub result: UserInfoResult,
+}
+
+#[derive(Deserialize)]
+pub struct UserInfoResult {
+    pub id: u64,
+    pub first_name: String,
+    pub last_name: String,
+    pub username: String,
+}
+
+#[derive(Deserialize)]
 pub struct UpdateConfigQueryParam {
     pub app_config: String,
 }
@@ -120,16 +134,11 @@ pub struct RemoveBotAdminQueryParam {
     pub admin_id: u64,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct ControlledBots {
-    pub owner_bots: Vec<String>,
-    pub admin_bots: Vec<String>,
-}
+
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MainBotMainPageProps {
     pub bots: Vec<Bot>,
-    pub has_suspended_bots: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -142,8 +151,8 @@ pub struct Bot {
     pub owner: User,
     pub admins: Vec<User>,
 
-    pub suspended: bool,
-    pub balance: u64,
+    pub suspended: Option<bool>,
+    pub debt: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
