@@ -19,8 +19,9 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::{
     api, json,
     main_bot::{self, MAIN_BOT_ID},
-    AppState, ControlledBots, HTML_MINI_APP,
+    AppState, HTML_MINI_APP,
 };
+use crate::{app_state::ControlledBots, db::DBBot};
 
 // pub async fn user_check(
 //     headers: HeaderMap,
@@ -202,9 +203,13 @@ pub async fn fetch_user_bots(
         Ok(Some(user_id)) => {
             //todo bad unwrap
             let controlled_bots = state.get_controlled_bots(user_id).await.unwrap();
-            let json_value = convert_controlled_bots_to_json_value(controlled_bots);
-
-            (StatusCode::OK, Json(json_value))
+            match convert_controlled_bots_to_json_value(controlled_bots).await {
+                Ok(json_value) => (StatusCode::OK, Json(json_value)),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
@@ -217,50 +222,82 @@ pub async fn fetch_user_bots(
     }
 }
 
-fn convert_controlled_bots_to_json_value(controlled_bots: ControlledBots) -> Value {
-    let mut bots = vec![];
+async fn convert_controlled_bots_to_json_value(controlled_bots: ControlledBots) -> Result<Value> {
+    use std::time::Instant;
+    use tokio::task::{self, JoinHandle};
 
-    //todo api::get_bot_info to get name and avatar
-    //todo api::get_user_info to get owner and admins
-    for bot in controlled_bots.owner_bots {
-        bots.push(json::Bot {
-            id: bot.id.parse::<u64>().unwrap(),
-            name: todo!(),
-            avatar: todo!(),
-            user_role: "owner".to_string(),
-            owner: json::User {
-                id: bot.owner,
-                username: todo!(),
-                name: todo!(),
-                avatar_url: todo!(),
-            },
-            admins: todo!(),
-            suspended: None,
-            debt: None,
+    let start = Instant::now();
+    println!("Starting convert_controlled_bots_to_json_value");
+
+    type BotInfoResult = Result<(DBBot, json::BotInfoResult, Option<String>, String)>;
+    let mut tasks: Vec<JoinHandle<BotInfoResult>> = Vec::new();
+
+    // Process owner bots
+    for bot in &controlled_bots.owner_bots {
+        let token = bot.token.clone();
+        let bot_clone = bot.clone();
+        let task: JoinHandle<BotInfoResult> = task::spawn(async move {
+            let bot_info = api::get_bot_info(&token).await?;
+            let bot_id = bot_info.result.id;
+            let avatar_url = api::get_avatar_url(&token, bot_id).await?;
+            Ok((bot_clone, bot_info.result, avatar_url, "owner".to_string()))
         });
+        tasks.push(task);
     }
 
-    for bot in controlled_bots.admin_bots {
-        bots.push(json::Bot {
-            id: bot.id.parse::<u64>().unwrap(),
-            name: todo!(),
-            avatar: todo!(),
-            user_role: "admin".to_string(),
-            owner: json::User {
-                id: bot.owner,
-                username: todo!(),
-                name: todo!(),
-                avatar_url: todo!(),
-            },
-            admins: todo!(),
-            suspended: None,
-            debt: None,
+    // Process admin bots
+    for bot in &controlled_bots.admin_bots {
+        let token = bot.token.clone();
+        let bot_clone = bot.clone();
+        let task: JoinHandle<BotInfoResult> = task::spawn(async move {
+            let bot_info = api::get_bot_info(&token).await?;
+            let bot_id = bot_info.result.id;
+            let avatar_url = api::get_avatar_url(&token, bot_id).await?;
+            Ok((bot_clone, bot_info.result, avatar_url, "admin".to_string()))
         });
+        tasks.push(task);
     }
+
+    println!("Tasks spawned in: {:?}", start.elapsed());
+    let tasks_start = Instant::now();
+
+    let mut bots = Vec::new();
+    for task in tasks {
+        match task.await {
+            Ok(result) => match result {
+                Ok((bot, bot_info, avatar_url, user_role)) => {
+                    bots.push(json::Bot {
+                        id: bot.id.parse::<u64>().unwrap_or(0),
+                        name: bot_info.first_name,
+                        avatar: avatar_url.unwrap_or_default(),
+                        user_role,
+                        owner: json::User {
+                            id: bot.owner,
+                            username: "owner_username".to_string(), // Default username
+                            name: "name".to_string(),               // Default name
+                            avatar_url: "".to_string(),             // Default avatar URL
+                        },
+                        admins: Vec::new(), // Default empty admins list
+                        suspended: None,
+                        debt: None,
+                    });
+                }
+                Err(e) => {
+                    println!("Error fetching bot info: {}", e);
+                }
+            },
+            Err(e) => {
+                println!("Task join error: {}", e);
+            }
+        }
+    }
+
+    println!("Tasks completed in: {:?}", tasks_start.elapsed());
 
     let main_page_props = json::MainBotMainPageProps { bots };
+    let json_value = serde_json::to_value(&main_page_props)?;
 
-    serde_json::to_value(&main_page_props).unwrap()
+    Ok(json_value)
 }
 
 pub async fn add_bot(

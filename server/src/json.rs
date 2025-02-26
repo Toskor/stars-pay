@@ -86,6 +86,7 @@ pub struct BotInfo {
 pub struct BotInfoResult {
     pub id: u64,
     pub username: String,
+    pub first_name: String,
 }
 
 #[derive(Deserialize)]
@@ -134,8 +135,6 @@ pub struct RemoveBotAdminQueryParam {
     pub admin_id: u64,
 }
 
-
-
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MainBotMainPageProps {
     pub bots: Vec<Bot>,
@@ -147,6 +146,7 @@ pub struct Bot {
     pub name: String,
     pub avatar: String,
 
+    #[serde(rename = "userRole")]
     pub user_role: String,
     pub owner: User,
     pub admins: Vec<User>,
@@ -162,7 +162,43 @@ pub struct User {
     pub username: String,
     //ex Григорий Борисов
     pub name: String,
+    #[serde(rename = "avatarUrl")]
     pub avatar_url: String,
+}
+
+#[derive(Deserialize)]
+pub struct UserProfilePhotos {
+    pub ok: bool,
+    pub result: UserProfilePhotosResult,
+}
+
+#[derive(Deserialize)]
+pub struct UserProfilePhotosResult {
+    pub total_count: u32,
+    pub photos: Vec<Vec<PhotoSize>>,
+}
+
+#[derive(Deserialize)]
+pub struct PhotoSize {
+    pub file_id: String,
+    pub file_unique_id: String,
+    pub width: u32,
+    pub height: u32,
+    pub file_size: Option<u32>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct FileResponse {
+    pub ok: bool,
+    pub result: FileResult,
+}
+
+#[derive(serde::Deserialize)]
+pub struct FileResult {
+    pub file_id: String,
+    pub file_unique_id: String,
+    pub file_size: Option<u32>,
+    pub file_path: String,
 }
 
 #[cfg(test)]

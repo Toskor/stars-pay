@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_rusqlite::{rusqlite::named_params, Connection};
 use rusqlite::functions::FunctionFlags;
 
-use crate::UserRole;
+use crate::app_state::UserRole;
 
 #[derive(Debug, Clone)]
 pub struct DBBot {

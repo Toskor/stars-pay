@@ -31,9 +31,10 @@
       if (result.success) {
         data = result.data;
         //todo remove (for testing)
-        data = {
-          bots: testBots,
-        };
+        // data = {
+        //   bots: testBots,
+        // };
+        console.log(data);
 
         if (data.bots) {
           suspendedBots = data.bots.filter((bot) => bot.suspended);
@@ -87,7 +88,7 @@
         {#each data?.bots || [] as bot, index}
           <Cell>
             {#snippet before()}
-              <Avatar size={48} src={bot.avatar} />
+              <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
             {/snippet}
 
             {#snippet after()}

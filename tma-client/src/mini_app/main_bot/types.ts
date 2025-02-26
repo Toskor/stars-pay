@@ -23,7 +23,7 @@ export type User = {
   username: string;
   //ex Григорий Борисов
   name: string;
-  avatar_url: string;
+  avatarUrl: string;
 };
 
 export const testBots: Bot[] = [
@@ -36,7 +36,7 @@ export const testBots: Bot[] = [
       id: 1,
       username: "YomlDevBot",
       name: "YomlDevBot",
-      avatar_url: "https://avatars.githubusercontent.com/u/84640980?v=4",
+      avatarUrl: "https://avatars.githubusercontent.com/u/84640980?v=4",
     },
     admins: [],
     suspended: true,
@@ -51,7 +51,7 @@ export const testBots: Bot[] = [
       id: 1,
       username: "YomlDevBot",
       name: "YomlDevBot",
-      avatar_url: "https://avatars.githubusercontent.com/u/84640980?v=4",
+      avatarUrl: "https://avatars.githubusercontent.com/u/84640980?v=4",
     },
     admins: [],
   },
