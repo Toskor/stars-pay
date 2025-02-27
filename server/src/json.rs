@@ -79,23 +79,27 @@ pub struct CreateInvoiceAnswer {
 #[derive(Deserialize)]
 pub struct BotInfo {
     pub ok: bool,
-    pub result: BotInfoResult,
+    pub result: Option<BotInfoResult>,
+    pub error_code: Option<u32>,
+    pub description: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct BotInfoResult {
     pub id: u64,
     pub username: String,
     pub first_name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct UserInfo {
     pub ok: bool,
-    pub result: UserInfoResult,
+    pub result: Option<UserInfoResult>,
+    pub error_code: Option<u32>,
+    pub description: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct UserInfoResult {
     pub id: u64,
     pub first_name: String,
@@ -108,7 +112,7 @@ pub struct UpdateConfigQueryParam {
     pub app_config: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct WebAppUser {
     pub id: u64,
     pub first_name: String,
@@ -137,26 +141,28 @@ pub struct RemoveBotAdminQueryParam {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MainBotMainPageProps {
-    pub bots: Vec<Bot>,
+    pub bots: Vec<TMABotData>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct Bot {
+/// Telegram Mini App Bot Data for Main Bot pages
+pub struct TMABotData {
     pub id: u64,
     pub name: String,
     pub avatar: String,
 
     #[serde(rename = "userRole")]
     pub user_role: String,
-    pub owner: User,
-    pub admins: Vec<User>,
+    pub owner: TMAUserData,
+    pub admins: Vec<TMAUserData>,
 
     pub suspended: Option<bool>,
     pub debt: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct User {
+/// Telegram Mini App User Data for Main Bot pages
+pub struct TMAUserData {
     pub id: u64,
     //ex torsor
     pub username: String,

@@ -96,8 +96,13 @@ impl AppState {
     pub async fn add_bot(&self, token: &str, owner: u64) -> Result<()> {
         let tg_api_url = api::get_tg_api_url(token);
         let bot_info = api::get_bot_info(&tg_api_url).await?;
+        let bot_info = if bot_info.ok {
+            bot_info.result.unwrap()
+        } else {
+            return Err(anyhow::anyhow!("Bot info not found"));
+        };
 
-        let name = bot_info.result.username.to_lowercase();
+        let name = bot_info.username.to_lowercase();
         let bot_id = name.trim_end_matches("bot").trim_end_matches("_");
 
         if bot_id == MAIN_BOT_ID {

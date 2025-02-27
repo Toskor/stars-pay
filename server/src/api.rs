@@ -148,17 +148,24 @@ pub async fn get_bot_info(token: &str) -> Result<json::BotInfo> {
 
     let res = integrations::http::get(&uri, None).await?;
 
-    Ok(res.to_json()?)
+    let json: json::BotInfo = res.to_json()?;
+    Ok(json)
 }
 
-pub async fn get_user_info(token: &str, user_id: &str) -> Result<json::UserInfo> {
+pub async fn get_user_info(token: &str, user_id: u64) -> Result<Option<json::UserInfoResult>> {
     //getChat
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getChat?chat_id={}", tg_api_url, user_id)).unwrap();
 
     let res = integrations::http::get(&uri, None).await?;
+    let json: json::UserInfo = res.to_json()?;
 
-    Ok(res.to_json()?)
+    if json.ok {
+        //good unwrap, check ok first
+        Ok(Some(json.result.unwrap()))
+    } else {
+        Ok(None)
+    }
 }
 
 async fn get_user_profile_photos(token: &str, user_id: u64) -> Result<json::UserProfilePhotos> {
@@ -218,4 +225,20 @@ pub async fn get_avatar_url(token: &str, id: u64) -> Result<Option<String>> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::main_bot::MAIN_BOT_TOKEN;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_user_info_by_id() {
+        let token = MAIN_BOT_TOKEN;
+        let user_id = 2135923914;
+
+        let user_info = get_user_info(token, user_id).await.unwrap();
+        println!(
+            "user_info: {:?}",
+            serde_json::to_string(&user_info).unwrap()
+        );
+    }
+}

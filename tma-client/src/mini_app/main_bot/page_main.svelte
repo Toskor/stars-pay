@@ -22,14 +22,22 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let data = $state<MainPageProps | null>(null);
+  let loadTime = $state<number | null>(null);
 
   let suspendedBots = $state<Bot[]>([]);
+
+  const appStartTime = performance.now();
 
   onMount(async () => {
     try {
       const result = await getControlledBots(app.initData);
       if (result.success) {
         data = result.data;
+
+        loadTime = performance.now() - appStartTime;
+        console.log(`App load time: ${loadTime.toFixed(2)}ms`);
+
+        console.log("init data", data);
         //todo remove (for testing)
         // data = {
         //   bots: testBots,
