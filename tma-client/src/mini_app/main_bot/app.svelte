@@ -3,65 +3,15 @@
   import { platform } from "telegram-ui";
   import type { Page } from "./types";
   import PageMain from "./page_main.svelte";
+  import { botsStore, loadBotsData } from "./store";
 
   import { onMount } from "svelte";
 
   import PageEdit from "./page_edit.svelte";
   import PageCreate from "./page_create.svelte";
 
-
-
-  //todo remove safety check, add just for testing
-  let app =
-    //@ts-ignore
-    (typeof window !== "undefined" && window.Telegram?.WebApp) || undefined;
-
-  // let controlled_bots: ControlledBots | null = $state({
-  //   bots: [
-  //     {
-  //       id: "stardonation",
-  //       controll_type: "owner",
-  //       username: "StarDonationBot",
-  //       owner: {
-  //         id: 1,
-  //         username: "Torsor",
-  //         avatar_url:
-  //           "https://avatars.mds.yandex.net/i?id=c9ceb9a07ba909fe17c4eeb9dd83dfb4_l-12184992-images-thumbs&n=13",
-  //       },
-  //       admins: [
-  //         {
-  //           id: 1,
-  //           username: "Torsor",
-  //           avatar_url:
-  //             "https://avatars.mds.yandex.net/i?id=c9ceb9a07ba909fe17c4eeb9dd83dfb4_l-12184992-images-thumbs&n=13",
-  //         },
-  //       ],
-  //       avatar_url:
-  //         "https://lastfm.freetls.fastly.net/i/u/ar0/0a087701e16a6f89cf98f0242dcdb3e8.png",
-  //     },
-  //   ],
-  // });
-
-  // async function getControlledBots(): Promise<ControlledBots | null> {
-  //   let res = await fetch(`${api_url}getControlledBots`, {
-  //     method: "GET",
-  //     headers: {
-  //       "Content-Type": "application/json;charset=utf-8",
-  //       "X-Telegram-InitData": app.initData,
-  //       // todo remove
-  //       "ngrok-skip-browser-warning": "",
-  //     },
-  //   });
-
-  //   if (res.ok) {
-  //     let json: ControlledBots = await res.json();
-  //     return json;
-  //   } else {
-  //     let err_text = await res.text();
-  //     console.error(err_text);
-  //     return null;
-  //   }
-  // }
+  //@ts-ignore
+  let app = window.Telegram.WebApp;
 
   // async function addBotQuery(bot_token: string) {
   //   let res = await fetch(`${api_url}addBot`, {
@@ -84,9 +34,9 @@
   //   }
   // }
 
-
-
   let currentPage: Page = $state("main");
+  let isAppLoading = $state(true);
+
   function navigateTo(page: Page) {
     currentPage = page;
     app.BackButton.isVisible = page !== "main";
@@ -106,6 +56,11 @@
     if (isIOS) {
       document.body.classList.add("wrapper-ios");
     }
+
+    // Загружаем данные ботов при инициализации приложения
+    loadBotsData(app.initData).then(() => {
+      isAppLoading = false;
+    });
 
     return () => {
       document.body.classList.remove("wrapper");
@@ -128,19 +83,7 @@
 </div>
 
 <!-- helpfull code -->
-<!-- <div class="container">
-  <Modal bind:showModal={show_add_bot_modal}>
-    {#snippet header()}
-      <h3 class="text-lg font-bold mb-4">Add Bot</h3>
-    {/snippet}
-
-    <div class="join">
-      <button class="btn join-item rounded-r-full" onclick={handleAddBot}
-        >Add</button
-      >
-    </div>
-
-    <div class="join join-vertical">
+<!--<div class="join join-vertical">
       <button
         class="btn btn-primary btn-outline m-2"
         onclick={() => {
@@ -148,11 +91,33 @@
         }}>Go to BotFather</button
       >
     </div>
-  </Modal> 
-</div> -->
+ -->
 
 <style>
   :global(body) {
     user-select: none;
+  }
+
+  .app-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    width: 100%;
+  }
+
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--tg-theme-button-color, #50a8eb);
+    animation: spin 1s ease-in-out infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

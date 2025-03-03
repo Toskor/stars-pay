@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { type MainPageProps, type Page, type Bot, testBots } from "./types";
-  import { getControlledBots } from "./queries";
+  import { type MainPageProps, type Page, type Bot } from "./types";
   import {
     Button,
     Title,
@@ -13,46 +12,72 @@
     Divider,
     Skeleton,
   } from "telegram-ui";
+  import { get } from "svelte/store";
+  import { botsStore, refreshBotsData } from "./store";
 
   let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
 
+  type BotsStoreType = {
+    isLoaded: boolean;
+    isLoading: boolean;
+    error: string | null;
+    data: MainPageProps | null;
+    loadTime: number | null;
+  };
+
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let data = $state<MainPageProps | null>(null);
   let loadTime = $state<number | null>(null);
+  let isRefreshing = $state(false);
 
   let suspendedBots = $state<Bot[]>([]);
 
-  const appStartTime = performance.now();
-
-  onMount(async () => {
+  async function handleRefresh() {
+    isRefreshing = true;
     try {
-      const result = await getControlledBots(app.initData);
-      if (result.success) {
-        data = result.data;
+      await refreshBotsData(app.initData);
 
-        loadTime = performance.now() - appStartTime;
-        console.log(`App load time: ${loadTime.toFixed(2)}ms`);
+      const storeValue = get(botsStore) as BotsStoreType;
+      error = storeValue.error;
+      data = storeValue.data;
+      loadTime = storeValue.loadTime;
 
-        console.log("init data", data);
-        //todo remove (for testing)
-        // data = {
-        //   bots: testBots,
-        // };
-        console.log(data);
-
-        if (data.bots) {
-          suspendedBots = data.bots.filter((bot) => bot.suspended);
-        }
-      } else {
-        error = result.error;
+      if (data?.bots) {
+        suspendedBots = data.bots.filter((bot) => bot.suspended);
       }
     } finally {
-      isLoading = false;
+      isRefreshing = false;
     }
+  }
+
+  onMount(() => {
+    const storeValue = get(botsStore) as BotsStoreType;
+
+    isLoading = storeValue.isLoading;
+    error = storeValue.error;
+    data = storeValue.data;
+    loadTime = storeValue.loadTime;
+
+    if (data?.bots) {
+      suspendedBots = data.bots.filter((bot) => bot.suspended);
+    }
+
+    const unsubscribe = botsStore.subscribe((store: BotsStoreType) => {
+      isLoading = store.isLoading;
+      error = store.error;
+      data = store.data;
+      loadTime = store.loadTime;
+
+      if (data?.bots) {
+        suspendedBots = data.bots.filter((bot) => bot.suspended);
+      }
+    });
+
+    return unsubscribe;
   });
 </script>
 
@@ -80,7 +105,6 @@
     </Button>
   </div>
 {:else}
-  <!-- <span>{JSON.stringify(data)}</span> -->
   <List>
     <Section>
       {#snippet header()}
