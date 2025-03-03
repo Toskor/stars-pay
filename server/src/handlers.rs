@@ -315,64 +315,122 @@ async fn convert_controlled_bots_to_json_value(
     }
 
     // Process admin bots
-    // for bot in controlled_bots.admin_bots {
-    //     let mini_app_user = web_app_user.clone();
-    //     let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
-    //         let Ok(bot_info) = api::get_bot_info(&bot.token).await else {
-    //             //todo here need to log error
-    //             println!("Error fetching bot info: {}", bot.id);
-    //             return None;
-    //         };
-    //         let Ok(avatar_url) = api::get_avatar_url(&bot.token, bot_info.result.id).await else {
-    //             //todo here need to log error
-    //             println!("Error fetching avatar url: {}", bot.id);
-    //             return None;
-    //         };
-    //         let owner = api::get_user_info(&bot.token, bot.owner)
-    //             .await
-    //             .unwrap()
-    //             .unwrap();
-    //         let owner_avatar_url = api::get_avatar_url(&bot.token, owner.id).await.unwrap();
-    //         let mut admins = Vec::new();
-    //         for admin_id in bot.admins {
-    //             if admin_id == web_app_user.id {
-    //                 admins.push(json::TMAUserData {
-    //                     id: admin_id,
-    //                     username: mini_app_user.username.clone(),
-    //                     name: format!("{} {}", mini_app_user.first_name, mini_app_user.last_name),
-    //                     avatar_url: mini_app_user.photo_url.clone(),
-    //                 });
-    //                 continue;
-    //             }
-    //             let admin = api::get_user_info(&bot.token, admin_id).await.unwrap();
-    //             let avatar_url = api::get_avatar_url(&bot.token, admin_id).await.unwrap();
-    //             if let Some(admin) = admin {
-    //                 admins.push(json::TMAUserData {
-    //                     id: admin_id,
-    //                     username: admin.username,
-    //                     name: format!("{} {}", admin.first_name, admin.last_name),
-    //                     avatar_url: avatar_url.unwrap_or_default(),
-    //                 });
-    //             }
-    //         }
-    //         Some(json::TMABotData {
-    //             id: bot.id.parse::<u64>().unwrap_or(0),
-    //             name: bot_info.result.first_name,
-    //             avatar: avatar_url.unwrap_or_default(),
-    //             user_role: "admin".to_string(),
-    //             owner: json::TMAUserData {
-    //                 id: owner.id,
-    //                 username: owner.username,
-    //                 name: format!("{} {}", owner.first_name, owner.last_name),
-    //                 avatar_url: owner_avatar_url.unwrap_or_default(),
-    //             },
-    //             admins,
-    //             suspended: None,
-    //             debt: None,
-    //         })
-    //     });
-    //     tasks.push(task);
-    // }
+    for bot in controlled_bots.admin_bots {
+        let mini_app_user = web_app_user.clone();
+        let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
+            let bot_info_future = api::get_bot_info(&bot.token);
+            let bot_info = match bot_info_future.await {
+                Ok(bot_info) => {
+                    if bot_info.ok {
+                        bot_info.result.unwrap()
+                    } else {
+                        return None;
+                    }
+                }
+                Err(e) => {
+                    //todo here need to log error
+                    println!("Error fetching bot info: {} error {}", bot.id, e);
+                    return None;
+                }
+            };
+
+            let bot_avatar_url_future = api::get_avatar_url(&bot.token, bot_info.id);
+
+            let owner_info_future = api::get_user_info(&bot.token, bot.owner);
+            let owner_avatar_url_future = api::get_avatar_url(&bot.token, bot.owner);
+
+            let mut admin_futures = Vec::new();
+            for admin_id in &bot.admins {
+                if *admin_id == mini_app_user.id {
+                    continue;
+                }
+
+                let token = bot.token.clone();
+                let admin_id = *admin_id;
+                let admin_info_future = task::spawn(async move {
+                    let (admin_info, admin_avatar_url) = tokio::join!(
+                        api::get_user_info(&token, admin_id),
+                        api::get_avatar_url(&token, admin_id)
+                    );
+                    (admin_id, admin_info, admin_avatar_url)
+                });
+                admin_futures.push(admin_info_future);
+            }
+
+            let (bot_avatar_url_result, owner_info_result, owner_avatar_url_result) = tokio::join!(
+                bot_avatar_url_future,
+                owner_info_future,
+                owner_avatar_url_future
+            );
+
+            let Ok(bot_avatar_url) = bot_avatar_url_result else {
+                //todo here need to log error
+                println!("Error fetching avatar url: {}", bot.id);
+                return None;
+            };
+
+            let Ok(owner_info) = owner_info_result else {
+                //todo here need to log error
+                println!("Error fetching owner info for bot: {}", bot.id);
+                return None;
+            };
+
+            let Some(owner) = owner_info else {
+                //todo here need to log error
+                println!("Owner info not found for bot: {}", bot.id);
+                return None;
+            };
+
+            let Ok(owner_avatar_url) = owner_avatar_url_result else {
+                //todo here need to log error
+                println!("Error fetching owner avatar url for bot: {}", bot.id);
+                return None;
+            };
+
+            let mut admins = Vec::with_capacity(bot.admins.len());
+
+            if bot.admins.contains(&mini_app_user.id) {
+                admins.push(json::TMAUserData {
+                    id: mini_app_user.id,
+                    username: mini_app_user.username.clone(),
+                    name: format!("{} {}", mini_app_user.first_name, mini_app_user.last_name),
+                    avatar_url: mini_app_user.photo_url.clone(),
+                });
+            }
+
+            for admin_future in admin_futures {
+                if let Ok((admin_id, admin_info, avatar_url)) = admin_future.await {
+                    if let Ok(Some(admin)) = admin_info {
+                        if let Ok(avatar_url) = avatar_url {
+                            admins.push(json::TMAUserData {
+                                id: admin_id,
+                                username: admin.username,
+                                name: format!("{} {}", admin.first_name, admin.last_name),
+                                avatar_url: avatar_url.unwrap_or_default(),
+                            });
+                        }
+                    }
+                }
+            }
+
+            Some(json::TMABotData {
+                id: bot.id.parse::<u64>().unwrap_or(0),
+                name: bot_info.first_name,
+                avatar: bot_avatar_url.unwrap_or_default(),
+                user_role: "admin".to_string(),
+                owner: json::TMAUserData {
+                    id: owner.id,
+                    username: owner.username,
+                    name: format!("{} {}", owner.first_name, owner.last_name),
+                    avatar_url: owner_avatar_url.unwrap_or_default(),
+                },
+                admins,
+                suspended: None,
+                debt: None,
+            })
+        });
+        tasks.push(task);
+    }
 
     let tasks_start = Instant::now();
 
