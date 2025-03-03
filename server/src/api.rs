@@ -152,12 +152,49 @@ pub async fn get_bot_info(token: &str) -> Result<json::BotInfo> {
     Ok(json)
 }
 
+pub async fn get_bot_info_keep_alive(token: &str) -> Result<json::BotInfo> {
+    let tg_api_url = get_tg_api_url(token);
+    let uri = hyper::Uri::from_str(&format!("{}getMe", tg_api_url)).unwrap();
+    let headers = HeaderMap::from_iter([(
+        header::CONNECTION,
+        header::HeaderValue::from_static("keep-alive"),
+    )]);
+
+    let res = integrations::http::get(&uri, Some(&headers)).await?;
+
+    let json: json::BotInfo = res.to_json()?;
+    Ok(json)
+}
+
 pub async fn get_user_info(token: &str, user_id: u64) -> Result<Option<json::UserInfoResult>> {
     //getChat
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getChat?chat_id={}", tg_api_url, user_id)).unwrap();
 
     let res = integrations::http::get(&uri, None).await?;
+    let json: json::UserInfo = res.to_json()?;
+
+    if json.ok {
+        //good unwrap, check ok first
+        Ok(Some(json.result.unwrap()))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn get_user_info_keep_alive(
+    token: &str,
+    user_id: u64,
+) -> Result<Option<json::UserInfoResult>> {
+    //getChat
+    let tg_api_url = get_tg_api_url(token);
+    let uri = hyper::Uri::from_str(&format!("{}getChat?chat_id={}", tg_api_url, user_id)).unwrap();
+    let headers = HeaderMap::from_iter([(
+        header::CONNECTION,
+        header::HeaderValue::from_static("keep-alive"),
+    )]);
+
+    let res = integrations::http::get(&uri, Some(&headers)).await?;
     let json: json::UserInfo = res.to_json()?;
 
     if json.ok {
@@ -187,11 +224,63 @@ async fn get_user_profile_photos(token: &str, user_id: u64) -> Result<json::User
     }
 }
 
+async fn get_user_profile_photos_keep_alive(
+    token: &str,
+    user_id: u64,
+) -> Result<json::UserProfilePhotos> {
+    let tg_api_url = get_tg_api_url(token);
+
+    let uri = hyper::Uri::from_str(&format!(
+        "{}getUserProfilePhotos?user_id={}&offset=0&limit=1",
+        tg_api_url, user_id
+    ))
+    .unwrap();
+
+    let headers = HeaderMap::from_iter([(
+        header::CONNECTION,
+        header::HeaderValue::from_static("keep-alive"),
+    )]);
+
+    let res = integrations::http::get(&uri, Some(&headers)).await?;
+
+    if res.status == StatusCode::OK {
+        Ok(res.to_json()?)
+    } else {
+        let err: json::Error = res.to_json()?;
+        Err(anyhow::anyhow!("{}", err.description))
+    }
+}
+
 async fn get_file_url(token: &str, file_id: &str) -> Result<String> {
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getFile?file_id={}", tg_api_url, file_id)).unwrap();
 
     let res = integrations::http::get(&uri, None).await?;
+
+    if res.status == StatusCode::OK {
+        let file_info: json::FileResponse = res.to_json()?;
+        // https://core.telegram.org/bots/api#getfile
+        let file_url = format!(
+            "https://api.telegram.org/file/bot{}/{}",
+            token, file_info.result.file_path
+        );
+        Ok(file_url)
+    } else {
+        let err: json::Error = res.to_json()?;
+        Err(anyhow::anyhow!("{}", err.description))
+    }
+}
+
+async fn get_file_url_keep_alive(token: &str, file_id: &str) -> Result<String> {
+    let tg_api_url = get_tg_api_url(token);
+    let uri = hyper::Uri::from_str(&format!("{}getFile?file_id={}", tg_api_url, file_id)).unwrap();
+
+    let headers = HeaderMap::from_iter([(
+        header::CONNECTION,
+        header::HeaderValue::from_static("keep-alive"),
+    )]);
+
+    let res = integrations::http::get(&uri, Some(&headers)).await?;
 
     if res.status == StatusCode::OK {
         let file_info: json::FileResponse = res.to_json()?;
@@ -217,6 +306,23 @@ pub async fn get_avatar_url(token: &str, id: u64) -> Result<Option<String>> {
     if let Some(photo_sizes) = photos.result.photos.first() {
         if let Some(largest_photo) = photo_sizes.last() {
             let file_url = get_file_url(token, &largest_photo.file_id).await?;
+            return Ok(Some(file_url));
+        }
+    }
+
+    Ok(None)
+}
+
+pub async fn get_avatar_url_keep_alive(token: &str, id: u64) -> Result<Option<String>> {
+    let photos = get_user_profile_photos_keep_alive(token, id).await?;
+
+    if photos.result.total_count == 0 || photos.result.photos.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(photo_sizes) = photos.result.photos.first() {
+        if let Some(largest_photo) = photo_sizes.last() {
+            let file_url = get_file_url_keep_alive(token, &largest_photo.file_id).await?;
             return Ok(Some(file_url));
         }
     }
