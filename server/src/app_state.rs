@@ -93,13 +93,16 @@ impl AppState {
     }
 
     //todo add new bot:  set cmd,
-    pub async fn add_bot(&self, token: &str, owner: u64) -> Result<()> {
-        let tg_api_url = api::get_tg_api_url(token);
-        let bot_info = api::get_bot_info(&tg_api_url).await?;
+    pub async fn add_bot(&self, token: &str, owner: u64) -> Result<(u64, String)> {
+        let bot_info = api::get_bot_info(token).await?;
         let bot_info = if bot_info.ok {
             bot_info.result.unwrap()
         } else {
-            return Err(anyhow::anyhow!("Bot info not found"));
+            return Err(anyhow::anyhow!(
+                "{} {}",
+                bot_info.error_code.unwrap(),
+                bot_info.description.unwrap()
+            ));
         };
 
         let name = bot_info.username.to_lowercase();
@@ -126,11 +129,11 @@ impl AppState {
             "Donate"
         };
         let button_url = format!("{api_url}app");
-        api::set_menu_button(&tg_api_url, button_text, &button_url).await?;
+        api::set_menu_button(token, button_text, &button_url).await?;
 
         let webhook_url = format!("{api_url}webhook");
         let secret_token = api::generate_secret_token();
-        api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
+        api::set_tg_webhook(token, &webhook_url, &secret_token).await?;
 
         let bot: DBBot = DBBot::new(
             bot_id.to_string(),
@@ -144,7 +147,7 @@ impl AppState {
 
         self.update_mini_app_source(bot_id.to_string()).await?;
 
-        Ok(())
+        Ok((bot_info.id, bot_info.username))
     }
 
     async fn add_mainbot(&self) -> Result<()> {

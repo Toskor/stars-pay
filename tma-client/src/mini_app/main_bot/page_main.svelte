@@ -11,6 +11,10 @@
     SectionHeader,
     Divider,
     Skeleton,
+    Image,
+    QuestionMarkIcon,
+    Input,
+    AddCircleIcon,
   } from "telegram-ui";
   import { get } from "svelte/store";
   import { botsStore, refreshBotsData } from "./store";
@@ -117,31 +121,58 @@
       {/snippet}
 
       {#snippet children()}
-        {#each data?.bots || [] as bot, index}
-          <Cell>
-            {#snippet before()}
-              <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
-            {/snippet}
+        {#if data?.bots.length == 0}
+          <div class="layout">
+            <Image
+              src="https://avatars.mds.yandex.net/i?id=0b56680182693c18b90b7e5047abbe27db7bd586-9198264-images-thumbs&n=13"
+              size={128}
+            ></Image>
 
-            {#snippet after()}
-              <Button mode="bezeled" size="s" onclick={() => navigateTo("edit")}
-                >Edit</Button
-              >
-            {/snippet}
+            <div class="layout-horizontal">
+              <Title weight={2} level={2}>You have no bot yet</Title>
+            </div>
 
-            {#snippet children()}
-              {bot.name}
-            {/snippet}
+            <Button
+              mode="filled"
+              size="l"
+              stretched={true}
+              onclick={() => navigateTo("create")}
+            >
+              Add one
+              {#snippet before()}
+                <AddCircleIcon isFill={true} />
+              {/snippet}
+            </Button>
+          </div>
+        {:else}
+          {#each data?.bots || [] as bot, index}
+            <Cell>
+              {#snippet before()}
+                <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
+              {/snippet}
 
-            {#snippet subtitle()}
-              {bot.userRole}
-            {/snippet}
-          </Cell>
+              {#snippet after()}
+                <Button
+                  mode="bezeled"
+                  size="s"
+                  onclick={() => navigateTo("edit")}>Edit</Button
+                >
+              {/snippet}
 
-          {#if index < (data?.bots?.length || 0) - 1}
-            <Divider />
-          {/if}
-        {/each}
+              {#snippet children()}
+                {bot.name}
+              {/snippet}
+
+              {#snippet subtitle()}
+                {bot.userRole}
+              {/snippet}
+            </Cell>
+
+            {#if index < (data?.bots?.length || 0) - 1}
+              <Divider />
+            {/if}
+          {/each}
+        {/if}
       {/snippet}
     </Section>
 

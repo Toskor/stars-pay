@@ -11,7 +11,8 @@ pub fn get_tg_api_url(token: &str) -> String {
     format!("https://api.telegram.org/bot{}/", token)
 }
 
-pub async fn set_tg_webhook(tg_api_url: &str, webhook_url: &str, secret_token: &str) -> Result<()> {
+pub async fn set_tg_webhook(token: &str, webhook_url: &str, secret_token: &str) -> Result<()> {
+    let tg_api_url = get_tg_api_url(token);
     let url_param = format!(
         "url={webhook_url}&allowed_updates={}&secret_token={secret_token}",
         WEBHOOK_ALLOWED_UPDATES
@@ -113,7 +114,8 @@ pub async fn create_invoice_link(
     }
 }
 
-pub async fn set_menu_button(tg_api_url: &str, button_text: &str, button_url: &str) -> Result<()> {
+pub async fn set_menu_button(token: &str, button_text: &str, button_url: &str) -> Result<()> {
+    let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}setChatMenuButton", tg_api_url)).unwrap();
 
     let body = serde_json::json!({
@@ -346,5 +348,13 @@ mod tests {
             "user_info: {:?}",
             serde_json::to_string(&user_info).unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_new_bot() {
+        //just_for_test75w67_bot
+        let token = "7662668003:AAHf61QA87mA0nCTSgzWJr7X7vm-dYvvShM";
+        let res = get_bot_info(token).await.unwrap();
+        println!("res: {}", res.result.unwrap().username);
     }
 }

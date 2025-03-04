@@ -1,4 +1,4 @@
-import type { MainPageProps } from "./types";
+import type { MainPageProps, Bot } from "./types";
 
 type ApiResponse<T> =
   | {
@@ -67,6 +67,19 @@ class ApiClient {
       },
     });
   }
+
+  async addBot(
+    initData: string,
+    botToken: string
+  ): Promise<ApiResponse<{ status: string; bot_data: Bot }>> {
+    return this.request<{ status: string; bot_data: Bot }>("/addBot", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ bot_token: botToken }),
+    });
+  }
 }
 
 const api = new ApiClient(
@@ -74,3 +87,4 @@ const api = new ApiClient(
 );
 
 export const getControlledBots = api.getControlledBots.bind(api);
+export const addBot = api.addBot.bind(api);

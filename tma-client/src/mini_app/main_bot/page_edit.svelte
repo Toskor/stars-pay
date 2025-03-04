@@ -62,7 +62,7 @@
       </div>
     {/snippet}
 
-    <Cell {platform}>
+    <Cell>
       {#snippet before()}
         <Avatar
           size={48}
@@ -85,7 +85,7 @@
 
     <Divider />
 
-    <Cell {platform}>
+    <Cell>
       {#snippet before()}
         <Avatar
           size={48}
@@ -115,7 +115,6 @@
 
       <AccordionContent style="color: var(--tgui--destructive_text_color);">
         <Cell
-          {platform}
           onclick={() => {
             console.log("change owner");
           }}
@@ -129,7 +128,6 @@
         <Divider />
 
         <Cell
-          {platform}
           onclick={() => {
             console.log("change bot token");
           }}
@@ -143,7 +141,6 @@
         <Divider />
 
         <Cell
-          {platform}
           onclick={() => {
             console.log("remove bot");
           }}

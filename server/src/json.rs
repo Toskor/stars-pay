@@ -76,7 +76,7 @@ pub struct CreateInvoiceAnswer {
     pub result: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct BotInfo {
     pub ok: bool,
     pub result: Option<BotInfoResult>,

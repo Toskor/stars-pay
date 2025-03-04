@@ -698,20 +698,37 @@ pub async fn add_bot(
     let security_check = state
         .with_record(MAIN_BOT_ID, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
-                return Some(user.id);
+                return Some(user);
             }
             None
         })
         .await;
 
     match security_check {
-        Ok(Some(user_id)) => {
-            let res = state.add_bot(&payload.bot_token, user_id).await;
+        Ok(Some(user)) => {
+            let res = state.add_bot(&payload.bot_token, user.id).await;
             match res {
-                Ok(()) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"status": "success"})),
-                ),
+                Ok((bot_id, bot_name)) => {
+                    let bot_data = json::TMABotData {
+                        id: bot_id,
+                        name: bot_name,
+                        avatar: "".to_string(),
+                        user_role: "owner".to_string(),
+                        owner: json::TMAUserData {
+                            id: user.id,
+                            username: user.username,
+                            name: format!("{} {}", user.first_name, user.last_name),
+                            avatar_url: user.photo_url,
+                        },
+                        admins: vec![],
+                        suspended: None,
+                        debt: None,
+                    };
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({"status": "success", "bot_data": bot_data})),
+                    )
+                }
                 Err(e) => (
                     StatusCode::BAD_REQUEST,
                     Json(serde_json::json!({"error": e.to_string()})),
