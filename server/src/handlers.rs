@@ -233,11 +233,49 @@ async fn convert_controlled_bots_to_json_value(
     let mut tasks: Vec<JoinHandle<Option<json::TMABotData>>> = Vec::new();
 
     // Process owner bots
-    for bot in controlled_bots.owner_bots {
+    process_owner_bots(&controlled_bots.owner_bots, &web_app_user, &mut tasks);
+
+    // Process admin bots
+    process_admin_bots(&controlled_bots.admin_bots, &web_app_user, &mut tasks);
+
+    let tasks_start = Instant::now();
+
+    let mut bots = Vec::with_capacity(tasks.len());
+    for task in tasks {
+        match task.await {
+            Ok(Some(tma_bot_data)) => {
+                bots.push(tma_bot_data);
+            }
+            Ok(None) => {
+                println!("Task returned None");
+            }
+            Err(e) => {
+                println!("Task join error: {}", e);
+            }
+        }
+    }
+
+    println!("Tasks completed in: {:?}", tasks_start.elapsed());
+
+    let main_page_props = json::MainBotMainPageProps { bots };
+    let json_value = serde_json::to_value(&main_page_props)?;
+
+    Ok(json_value)
+}
+
+fn process_owner_bots(
+    owner_bots: &Vec<DBBot>,
+    web_app_user: &json::WebAppUser,
+    tasks: &mut Vec<tokio::task::JoinHandle<Option<json::TMABotData>>>,
+) {
+    use tokio::task::{self, JoinHandle};
+
+    for bot in owner_bots {
+        let bot = bot.clone();
         let owner = web_app_user.clone();
         let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
             let Ok(numeric_id) = api::bot_numeric_id_from_token(&bot.token) else {
-                //unreachable, token format is incorrect, token was verified before the bot was added to the db
+                //unreachable, token format is incorrect, but token was verified before the bot was added to the db
                 return None;
             };
 
@@ -251,37 +289,8 @@ async fn convert_controlled_bots_to_json_value(
                 async move { api::get_avatar_url(&token, numeric_id).await }
             });
 
-            let mut admin_futures = Vec::new();
-            for admin_id in &bot.admins {
-                let token = bot.token.clone();
-                let admin_id = *admin_id;
-                let admin_info_future = task::spawn(async move {
-                    let (admin_info, admin_avatar_url) = tokio::join!(
-                        api::get_user_info(&token, admin_id),
-                        api::get_avatar_url(&token, admin_id)
-                    );
-                    (admin_id, admin_info, admin_avatar_url)
-                });
-                admin_futures.push(admin_info_future);
-            }
-
-            let mut admins = Vec::with_capacity(bot.admins.len());
-
-            for admin_future in admin_futures {
-                if let Ok((admin_id, admin_info, avatar_url)) = admin_future.await {
-                    let admin_info = admin_info;
-                    if let Ok(Some(admin)) = admin_info {
-                        if let Ok(avatar_url) = avatar_url {
-                            admins.push(json::TMAUserData {
-                                id: admin_id,
-                                username: admin.username,
-                                name: format!("{} {}", admin.first_name, admin.last_name),
-                                avatar_url: avatar_url.unwrap_or_default(),
-                            });
-                        }
-                    }
-                }
-            }
+            // Process admin information
+            let admins = process_admin_info(&bot.token, &bot.admins, None).await;
 
             let bot_info_first_name = match bot_info_task.await {
                 Ok(Ok(bot_info)) => {
@@ -321,8 +330,6 @@ async fn convert_controlled_bots_to_json_value(
             Some(json::TMABotData {
                 id: bot.id.parse::<u64>().unwrap_or(0),
                 name: bot_info_first_name.unwrap_or(bot.id),
-                // name: bot.id,
-                // avatar: None,
                 avatar: bot_avatar_url,
                 user_role: "owner".to_string(),
                 owner: json::TMAUserData {
@@ -338,9 +345,17 @@ async fn convert_controlled_bots_to_json_value(
         });
         tasks.push(task);
     }
+}
 
-    // Process admin bots
-    for bot in controlled_bots.admin_bots {
+fn process_admin_bots(
+    admin_bots: &Vec<DBBot>,
+    web_app_user: &json::WebAppUser,
+    tasks: &mut Vec<tokio::task::JoinHandle<Option<json::TMABotData>>>,
+) {
+    use tokio::task::{self, JoinHandle};
+
+    for bot in admin_bots {
+        let bot = bot.clone();
         let mini_app_user = web_app_user.clone();
         let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
             let Ok(numeric_id) = api::bot_numeric_id_from_token(&bot.token) else {
@@ -370,50 +385,8 @@ async fn convert_controlled_bots_to_json_value(
                 async move { api::get_avatar_url(&token, owner_id).await }
             });
 
-            let mut admin_futures = Vec::new();
-            for admin_id in &bot.admins {
-                if *admin_id == mini_app_user.id {
-                    continue;
-                }
-
-                let token = bot.token.clone();
-                let admin_id = *admin_id;
-                let admin_info_future = task::spawn(async move {
-                    let (admin_info, admin_avatar_url) = tokio::join!(
-                        api::get_user_info(&token, admin_id),
-                        api::get_avatar_url(&token, admin_id)
-                    );
-                    (admin_id, admin_info, admin_avatar_url)
-                });
-                admin_futures.push(admin_info_future);
-            }
-
-            let mut admins = Vec::with_capacity(bot.admins.len());
-
-            if bot.admins.contains(&mini_app_user.id) {
-                admins.push(json::TMAUserData {
-                    id: mini_app_user.id,
-                    username: mini_app_user.username.clone(),
-                    name: format!("{} {}", mini_app_user.first_name, mini_app_user.last_name),
-                    avatar_url: mini_app_user.photo_url.clone(),
-                });
-            }
-
-            for admin_future in admin_futures {
-                if let Ok((admin_id, admin_info, avatar_url)) = admin_future.await {
-                    let admin_info = admin_info;
-                    if let Ok(Some(admin)) = admin_info {
-                        if let Ok(avatar_url) = avatar_url {
-                            admins.push(json::TMAUserData {
-                                id: admin_id,
-                                username: admin.username,
-                                name: format!("{} {}", admin.first_name, admin.last_name),
-                                avatar_url: avatar_url.unwrap_or_default(),
-                            });
-                        }
-                    }
-                }
-            }
+            // Process admin information
+            let admins = process_admin_info(&bot.token, &bot.admins, Some(&mini_app_user)).await;
 
             let bot_info_first_name = match bot_info_task.await {
                 Ok(Ok(bot_info)) => {
@@ -501,30 +474,66 @@ async fn convert_controlled_bots_to_json_value(
         });
         tasks.push(task);
     }
+}
 
-    let tasks_start = Instant::now();
+async fn process_admin_info(
+    token: &str,
+    admin_ids: &Vec<u64>,
+    mini_app_user: Option<&json::WebAppUser>,
+) -> Vec<json::TMAUserData> {
+    use tokio::task::{self, JoinHandle};
 
-    let mut bots = Vec::with_capacity(tasks.len());
-    for task in tasks {
-        match task.await {
-            Ok(Some(tma_bot_data)) => {
-                bots.push(tma_bot_data);
+    let mut admin_futures = Vec::new();
+    for admin_id in admin_ids {
+        // Skip the mini_app_user if it's in the admin list and provided
+        if let Some(user) = mini_app_user {
+            if *admin_id == user.id {
+                continue;
             }
-            Ok(None) => {
-                println!("Task returned None");
-            }
-            Err(e) => {
-                println!("Task join error: {}", e);
+        }
+
+        let token = token.to_string();
+        let admin_id = *admin_id;
+        let admin_info_future = task::spawn(async move {
+            let (admin_info, admin_avatar_url) = tokio::join!(
+                api::get_user_info(&token, admin_id),
+                api::get_avatar_url(&token, admin_id)
+            );
+            (admin_id, admin_info, admin_avatar_url)
+        });
+        admin_futures.push(admin_info_future);
+    }
+
+    let mut admins = Vec::with_capacity(admin_ids.len());
+
+    // Add mini_app_user to admins if it's in the admin list and provided
+    if let Some(user) = mini_app_user {
+        if admin_ids.contains(&user.id) {
+            admins.push(json::TMAUserData {
+                id: user.id,
+                username: user.username.clone(),
+                name: format!("{} {}", user.first_name, user.last_name),
+                avatar_url: user.photo_url.clone(),
+            });
+        }
+    }
+
+    for admin_future in admin_futures {
+        if let Ok((admin_id, admin_info, avatar_url)) = admin_future.await {
+            if let Ok(Some(admin)) = admin_info {
+                if let Ok(avatar_url) = avatar_url {
+                    admins.push(json::TMAUserData {
+                        id: admin_id,
+                        username: admin.username,
+                        name: format!("{} {}", admin.first_name, admin.last_name),
+                        avatar_url: avatar_url.unwrap_or_default(),
+                    });
+                }
             }
         }
     }
 
-    println!("Tasks completed in: {:?}", tasks_start.elapsed());
-
-    let main_page_props = json::MainBotMainPageProps { bots };
-    let json_value = serde_json::to_value(&main_page_props)?;
-
-    Ok(json_value)
+    admins
 }
 
 pub async fn add_bot(

@@ -343,6 +343,8 @@ pub async fn get_avatar_url_keep_alive(token: &str, id: u64) -> Result<Option<St
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::Instant;
+
     use crate::main_bot::MAIN_BOT_TOKEN;
 
     use super::*;
@@ -357,6 +359,17 @@ mod tests {
             "user_info: {:?}",
             serde_json::to_string(&user_info).unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_me() {
+        let token = MAIN_BOT_TOKEN;
+
+        let start = Instant::now();
+        let res = get_bot_info(token).await.unwrap();
+        let duration = start.elapsed();
+        println!("res: {}", res.result.unwrap().username);
+        println!("duration out: {:?}", duration);
     }
 
     #[tokio::test]
