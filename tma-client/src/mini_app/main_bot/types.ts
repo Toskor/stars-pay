@@ -23,7 +23,7 @@ export type User = {
   username: string;
   //ex Григорий Борисов
   name: string;
-  avatarUrl: string;
+  avatarUrl?: string;
 };
 
 export const testBots: Bot[] = [

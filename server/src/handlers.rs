@@ -285,11 +285,6 @@ fn process_owner_bots(
                 async move { api::get_bot_info(&token).await }
             });
 
-            let bot_avatar_url_task = tokio::spawn({
-                let token = bot.token.clone();
-                async move { api::get_avatar_url(&token, numeric_id).await }
-            });
-
             // Process admin information
             let admins = process_admin_info(&bot.token, &bot.admins, None).await;
 
@@ -313,31 +308,16 @@ fn process_owner_bots(
                 }
             };
 
-            let bot_avatar_url_result = bot_avatar_url_task.await;
-            let bot_avatar_url = match bot_avatar_url_result {
-                Ok(Ok(avatar_url)) => avatar_url,
-                Ok(Err(e)) => {
-                    //todo here need to log error
-                    println!("Error fetching avatar url: {}", bot.id);
-                    None
-                }
-                Err(e) => {
-                    //task error
-                    println!("bot_avatar_url task error: {}", e);
-                    None
-                }
-            };
-
             Some(json::TMABotData {
                 id: bot.id.parse::<u64>().unwrap_or(0),
                 name: bot_info_first_name.unwrap_or(bot.id),
-                avatar: bot_avatar_url,
+                avatar: None,
                 user_role: "owner".to_string(),
                 owner: json::TMAUserData {
                     id: owner.id,
                     username: owner.username,
                     name: format!("{} {}", owner.first_name, owner.last_name),
-                    avatar_url: owner.photo_url,
+                    avatar_url: Some(owner.photo_url),
                 },
                 admins,
                 suspended: None,
@@ -369,21 +349,10 @@ fn process_admin_bots(
                 async move { api::get_bot_info(&token).await }
             });
 
-            let bot_avatar_url_task = tokio::spawn({
-                let token = bot.token.clone();
-                async move { api::get_avatar_url(&token, numeric_id).await }
-            });
-
             let owner_info_task = tokio::spawn({
                 let token = bot.token.clone();
                 let owner_id = bot.owner;
                 async move { api::get_user_info(&token, owner_id).await }
-            });
-
-            let owner_avatar_url_task = tokio::spawn({
-                let token = bot.token.clone();
-                let owner_id = bot.owner;
-                async move { api::get_avatar_url(&token, owner_id).await }
             });
 
             // Process admin information
@@ -409,21 +378,6 @@ fn process_admin_bots(
                 }
             };
 
-            let bot_avatar_url_result = bot_avatar_url_task.await;
-            let bot_avatar_url = match bot_avatar_url_result {
-                Ok(Ok(avatar_url)) => avatar_url,
-                Ok(Err(e)) => {
-                    //todo here need to log error
-                    println!("Error fetching avatar url: {}", bot.id);
-                    None
-                }
-                Err(e) => {
-                    //task error
-                    println!("bot_avatar_url task error: {}", e);
-                    None
-                }
-            };
-
             let owner_info = match owner_info_task.await {
                 Ok(Ok(Some(owner))) => owner,
                 Ok(Ok(None)) => {
@@ -443,30 +397,16 @@ fn process_admin_bots(
                 }
             };
 
-            let owner_avatar_url = match owner_avatar_url_task.await {
-                Ok(Ok(avatar_url)) => avatar_url,
-                Ok(Err(e)) => {
-                    //todo here need to log error
-                    println!("Error fetching owner avatar url for bot: {} {}", bot.id, e);
-                    None
-                }
-                Err(e) => {
-                    //task error
-                    println!("owner_avatar_url task error: {}", e);
-                    None
-                }
-            };
-
             Some(json::TMABotData {
                 id: bot.id.parse::<u64>().unwrap_or(0),
                 name: bot_info_first_name.unwrap_or(bot.id),
-                avatar: bot_avatar_url,
+                avatar: None,
                 user_role: "admin".to_string(),
                 owner: json::TMAUserData {
                     id: owner_info.id,
                     username: owner_info.username,
                     name: format!("{} {}", owner_info.first_name, owner_info.last_name),
-                    avatar_url: owner_avatar_url.unwrap_or_default(),
+                    avatar_url: None,
                 },
                 admins,
                 suspended: None,
@@ -486,7 +426,6 @@ async fn process_admin_info(
 
     let mut admin_futures = Vec::new();
     for admin_id in admin_ids {
-        // Skip the mini_app_user if it's in the admin list and provided
         if let Some(user) = mini_app_user {
             if *admin_id == user.id {
                 continue;
@@ -496,40 +435,34 @@ async fn process_admin_info(
         let token = token.to_string();
         let admin_id = *admin_id;
         let admin_info_future = task::spawn(async move {
-            let (admin_info, admin_avatar_url) = tokio::join!(
-                api::get_user_info(&token, admin_id),
-                api::get_avatar_url(&token, admin_id)
-            );
-            (admin_id, admin_info, admin_avatar_url)
+            let admin_info = api::get_user_info(&token, admin_id).await;
+            (admin_id, admin_info)
         });
         admin_futures.push(admin_info_future);
     }
 
     let mut admins = Vec::with_capacity(admin_ids.len());
 
-    // Add mini_app_user to admins if it's in the admin list and provided
     if let Some(user) = mini_app_user {
         if admin_ids.contains(&user.id) {
             admins.push(json::TMAUserData {
                 id: user.id,
                 username: user.username.clone(),
                 name: format!("{} {}", user.first_name, user.last_name),
-                avatar_url: user.photo_url.clone(),
+                avatar_url: Some(user.photo_url.clone()),
             });
         }
     }
 
     for admin_future in admin_futures {
-        if let Ok((admin_id, admin_info, avatar_url)) = admin_future.await {
+        if let Ok((admin_id, admin_info)) = admin_future.await {
             if let Ok(Some(admin)) = admin_info {
-                if let Ok(avatar_url) = avatar_url {
-                    admins.push(json::TMAUserData {
-                        id: admin_id,
-                        username: admin.username,
-                        name: format!("{} {}", admin.first_name, admin.last_name),
-                        avatar_url: avatar_url.unwrap_or_default(),
-                    });
-                }
+                admins.push(json::TMAUserData {
+                    id: admin_id,
+                    username: admin.username,
+                    name: format!("{} {}", admin.first_name, admin.last_name),
+                    avatar_url: None,
+                });
             }
         }
     }
@@ -565,7 +498,7 @@ pub async fn add_bot(
                             id: user.id,
                             username: user.username,
                             name: format!("{} {}", user.first_name, user.last_name),
-                            avatar_url: user.photo_url,
+                            avatar_url: Some(user.photo_url),
                         },
                         admins: vec![],
                         suspended: None,
@@ -672,6 +605,90 @@ pub async fn remove_bot_admin(
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
         ),
+    }
+}
+
+pub async fn avatar_url_handler(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    //todo does need security check?
+    let token = MAIN_BOT_TOKEN;
+
+    let user_id_parsed = match user_id.parse::<u64>() {
+        Ok(id) => id,
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(
+                    serde_json::json!({"error": "Invalid user ID"}).to_string(),
+                ))
+                .unwrap();
+        }
+    };
+
+    let avatar_url_result = api::get_avatar_url(token, user_id_parsed).await;
+
+    match avatar_url_result {
+        Ok(Some(avatar_url)) => {
+            let uri = match hyper::Uri::from_str(&avatar_url) {
+                Ok(uri) => uri,
+                Err(_) => {
+                    return Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(Body::from(
+                            serde_json::json!({"error": "Invalid avatar URL format"}).to_string(),
+                        ))
+                        .unwrap();
+                }
+            };
+
+            // Download the image
+            match integrations::http::get(&uri, None).await {
+                Ok(response) => {
+                    if response.status != StatusCode::OK {
+                        return Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(Body::from(
+                                serde_json::json!({"error": "Failed to download avatar image"})
+                                    .to_string(),
+                            ))
+                            .unwrap();
+                    }
+
+                    // For Telegram avatar images, the content type is always image/jpeg
+                    let content_type = "image/jpeg";
+                    let image_data = response.to_bytes().to_vec();
+
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type)
+                        .body(Body::from(image_data))
+                        .unwrap();
+                }
+                Err(e) => {
+                    return Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from(format!("Failed to download image: {}", e)))
+                        .unwrap();
+                }
+            }
+        }
+        Ok(None) => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from(
+                    serde_json::json!({"error": "No avatar found for this user"}).to_string(),
+                ))
+                .unwrap();
+        }
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(format!("Failed to download image: {}", e)))
+                .unwrap();
+        }
     }
 }
 
@@ -834,90 +851,6 @@ fn check_hash(init_data: &str, token: &str) -> Option<json::WebAppUser> {
     }
 
     None
-}
-
-pub async fn avatar_url_handler(
-    headers: HeaderMap,
-    State(state): State<Arc<AppState>>,
-    Path(user_id): Path<String>,
-) -> impl IntoResponse {
-    //todo does need security check?
-    let token = MAIN_BOT_TOKEN;
-
-    let user_id_parsed = match user_id.parse::<u64>() {
-        Ok(id) => id,
-        Err(_) => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(
-                    serde_json::json!({"error": "Invalid user ID"}).to_string(),
-                ))
-                .unwrap();
-        }
-    };
-
-    let avatar_url_result = api::get_avatar_url(token, user_id_parsed).await;
-
-    match avatar_url_result {
-        Ok(Some(avatar_url)) => {
-            let uri = match hyper::Uri::from_str(&avatar_url) {
-                Ok(uri) => uri,
-                Err(_) => {
-                    return Response::builder()
-                        .status(StatusCode::BAD_REQUEST)
-                        .body(Body::from(
-                            serde_json::json!({"error": "Invalid avatar URL format"}).to_string(),
-                        ))
-                        .unwrap();
-                }
-            };
-
-            // Download the image
-            match integrations::http::get(&uri, None).await {
-                Ok(response) => {
-                    if response.status != StatusCode::OK {
-                        return Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(Body::from(
-                                serde_json::json!({"error": "Failed to download avatar image"})
-                                    .to_string(),
-                            ))
-                            .unwrap();
-                    }
-
-                    // For Telegram avatar images, the content type is always image/jpeg
-                    let content_type = "image/jpeg";
-                    let image_data = response.to_bytes().to_vec();
-
-                    return Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, content_type)
-                        .body(Body::from(image_data))
-                        .unwrap();
-                }
-                Err(e) => {
-                    return Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::from(format!("Failed to download image: {}", e)))
-                        .unwrap();
-                }
-            }
-        }
-        Ok(None) => {
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from(
-                    serde_json::json!({"error": "No avatar found for this user"}).to_string(),
-                ))
-                .unwrap();
-        }
-        Err(e) => {
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(format!("Failed to download image: {}", e)))
-                .unwrap();
-        }
-    }
 }
 
 #[cfg(test)]

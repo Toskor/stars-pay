@@ -6,7 +6,7 @@ use axum::{
 };
 use db::{DBBot, DataBase};
 use handlers::{
-    add_bot, add_bot_admin, avatar_url_handler, create_invoice, fetch_user_bots, handler_print_2,
+    add_bot, add_bot_admin, avatar_url_handler, create_invoice, fetch_user_bots,
     mini_app, remove_bot_admin, update_config, webhook_handler,
 };
 

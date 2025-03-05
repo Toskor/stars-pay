@@ -169,7 +169,7 @@ pub struct TMAUserData {
     //ex Григорий Борисов
     pub name: String,
     #[serde(rename = "avatarUrl")]
-    pub avatar_url: String,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Deserialize)]
