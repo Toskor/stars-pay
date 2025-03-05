@@ -7,7 +7,7 @@ export interface MainPageProps {
 export interface Bot {
   id: string;
   name: string;
-  avatar: string;
+  avatar?: string;
 
   userRole: "owner" | "admin" | "user";
   owner: User;

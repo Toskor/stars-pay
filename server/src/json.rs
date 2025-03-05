@@ -149,7 +149,7 @@ pub struct MainBotMainPageProps {
 pub struct TMABotData {
     pub id: u64,
     pub name: String,
-    pub avatar: String,
+    pub avatar: Option<String>,
 
     #[serde(rename = "userRole")]
     pub user_role: String,

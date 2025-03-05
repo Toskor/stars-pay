@@ -13,27 +13,6 @@
   //@ts-ignore
   let app = window.Telegram.WebApp;
 
-  // async function addBotQuery(bot_token: string) {
-  //   let res = await fetch(`${api_url}addBot`, {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json;charset=utf-8",
-  //       "X-Telegram-InitData": app.initData,
-  //       // todo remove
-  //       "ngrok-skip-browser-warning": "",
-  //     },
-  //     body: JSON.stringify({ bot_token }),
-  //   });
-
-  //   if (res.ok) {
-  //     alert("Bot added");
-  //   } else {
-  //     let err = await res.text();
-  //     console.error(err);
-  //     alert("Error: " + err);
-  //   }
-  // }
-
   let currentPage: Page = $state("main");
   let isAppLoading = $state(true);
 
@@ -57,7 +36,6 @@
       document.body.classList.add("wrapper-ios");
     }
 
-    // Загружаем данные ботов при инициализации приложения
     loadBotsData(app.initData).then(() => {
       isAppLoading = false;
     });
@@ -81,17 +59,6 @@
     <PageCreate {navigateTo} />
   {/if}
 </div>
-
-<!-- helpfull code -->
-<!--<div class="join join-vertical">
-      <button
-        class="btn btn-primary btn-outline m-2"
-        onclick={() => {
-          app.openTelegramLink("https://t.me/botfather");
-        }}>Go to BotFather</button
-      >
-    </div>
- -->
 
 <style>
   :global(body) {

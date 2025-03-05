@@ -2,6 +2,14 @@ import { writable, type Writable } from "svelte/store";
 import type { MainPageProps } from "./types";
 import { getControlledBots } from "./queries";
 
+export type BotsStoreType = {
+  isLoaded: boolean;
+  isLoading: boolean;
+  error: string | null;
+  data: MainPageProps | null;
+  loadTime: number | null;
+};
+
 export const botsStore: Writable<{
   isLoaded: boolean;
   isLoading: boolean;

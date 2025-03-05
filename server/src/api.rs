@@ -11,6 +11,15 @@ pub fn get_tg_api_url(token: &str) -> String {
     format!("https://api.telegram.org/bot{}/", token)
 }
 
+pub fn bot_numeric_id_from_token(token: &str) -> Result<u64> {
+    let token_parts = token.split(':').collect::<Vec<&str>>();
+    if token_parts.len() != 2 {
+        return Err(anyhow::anyhow!("Invalid token format"));
+    }
+    let numeric_id = token_parts[0].parse::<u64>()?;
+    Ok(numeric_id)
+}
+
 pub async fn set_tg_webhook(token: &str, webhook_url: &str, secret_token: &str) -> Result<()> {
     let tg_api_url = get_tg_api_url(token);
     let url_param = format!(

@@ -29,6 +29,7 @@ impl DBBot {
     ) -> Self {
         DBBot {
             id,
+            // numeric_id,
             token,
             secret_token,
             owner,
@@ -355,4 +356,25 @@ fn map_serde_err(e: serde_json::error::Error) -> rusqlite::Error {
         },
         Some(format!("Failed to parse admins json: {}", e)),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_add_admin() {
+        let bot_id = "star_donation";
+        //yury
+        let admin_id_1 = 487373;
+        //matvey
+        let admin_id_2 = 2135923914;
+
+        let db = DataBase::new_sql_lite("db/bots_data_base.sqlite")
+            .await
+            .expect("Failed to create database");
+
+        db.add_bot_admin(bot_id.to_string(), admin_id_1).await.unwrap();
+        db.add_bot_admin(bot_id.to_string(), admin_id_2).await.unwrap();
+    }
 }

@@ -17,20 +17,12 @@
     AddCircleIcon,
   } from "telegram-ui";
   import { get } from "svelte/store";
-  import { botsStore, refreshBotsData } from "./store";
+  import { botsStore, refreshBotsData, type BotsStoreType } from "./store";
 
   let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
-
-  type BotsStoreType = {
-    isLoaded: boolean;
-    isLoading: boolean;
-    error: string | null;
-    data: MainPageProps | null;
-    loadTime: number | null;
-  };
 
   let isLoading = $state(true);
   let error = $state<string | null>(null);
