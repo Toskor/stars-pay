@@ -264,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "cidre"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "cidre-macros",
  "parking_lot",

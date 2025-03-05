@@ -6,8 +6,8 @@ use axum::{
 };
 use db::{DBBot, DataBase};
 use handlers::{
-    add_bot, add_bot_admin, create_invoice, fetch_user_bots, handler_print_2, mini_app,
-    remove_bot_admin, update_config, webhook_handler,
+    add_bot, add_bot_admin, avatar_url_handler, create_invoice, fetch_user_bots, handler_print_2,
+    mini_app, remove_bot_admin, update_config, webhook_handler,
 };
 
 use main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
@@ -18,11 +18,11 @@ use tokio::{self, fs::OpenOptions, io::AsyncWriteExt, sync::Mutex};
 extern crate dotenv_codegen;
 
 mod api;
+pub mod app_state;
 pub mod db;
 mod handlers;
 pub mod json;
 pub mod main_bot;
-pub mod app_state;
 
 const PATH_TO_DIST: &str = "../../tma-client/dist/src/pages";
 const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
@@ -32,8 +32,6 @@ const HTML_MAIN_BOT_MINI_APP: &str =
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
 const CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
-
-
 
 #[tokio::main]
 async fn main() {
@@ -55,9 +53,8 @@ async fn main() {
             post(remove_bot_admin),
         )
         // .route("/stardonationservice/removeBot", post(remove_bot))
-        //tests
-        // .route("/:bot_id/print", get(handler_print_1))
-        .route("/stardonationservice/print", get(handler_print_2))
+        //util routes
+        .route("/avatar/:user_id", get(avatar_url_handler))
         //app state
         .with_state(arc_app_state);
 

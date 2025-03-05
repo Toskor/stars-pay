@@ -1,9 +1,10 @@
 use anyhow::Result;
 
 use axum::{
+    body::Body,
     extract::{Json, Path, Query, Request, State},
     http::HeaderValue,
-    response::{Html, IntoResponse},
+    response::{IntoResponse, Response},
 };
 use hmac::{Hmac, Mac};
 use hyper::{header, HeaderMap, StatusCode, Uri};
@@ -835,14 +836,88 @@ fn check_hash(init_data: &str, token: &str) -> Option<json::WebAppUser> {
     None
 }
 
-pub async fn handler_print_1() -> impl IntoResponse {
-    println!("handler_print_1");
-    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
-}
+pub async fn avatar_url_handler(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(user_id): Path<String>,
+) -> impl IntoResponse {
+    //todo does need security check?
+    let token = MAIN_BOT_TOKEN;
 
-pub async fn handler_print_2() -> impl IntoResponse {
-    println!("handler_print_2");
-    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
+    let user_id_parsed = match user_id.parse::<u64>() {
+        Ok(id) => id,
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(
+                    serde_json::json!({"error": "Invalid user ID"}).to_string(),
+                ))
+                .unwrap();
+        }
+    };
+
+    let avatar_url_result = api::get_avatar_url(token, user_id_parsed).await;
+
+    match avatar_url_result {
+        Ok(Some(avatar_url)) => {
+            let uri = match hyper::Uri::from_str(&avatar_url) {
+                Ok(uri) => uri,
+                Err(_) => {
+                    return Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(Body::from(
+                            serde_json::json!({"error": "Invalid avatar URL format"}).to_string(),
+                        ))
+                        .unwrap();
+                }
+            };
+
+            // Download the image
+            match integrations::http::get(&uri, None).await {
+                Ok(response) => {
+                    if response.status != StatusCode::OK {
+                        return Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(Body::from(
+                                serde_json::json!({"error": "Failed to download avatar image"})
+                                    .to_string(),
+                            ))
+                            .unwrap();
+                    }
+
+                    // For Telegram avatar images, the content type is always image/jpeg
+                    let content_type = "image/jpeg";
+                    let image_data = response.to_bytes().to_vec();
+
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type)
+                        .body(Body::from(image_data))
+                        .unwrap();
+                }
+                Err(e) => {
+                    return Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from(format!("Failed to download image: {}", e)))
+                        .unwrap();
+                }
+            }
+        }
+        Ok(None) => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from(
+                    serde_json::json!({"error": "No avatar found for this user"}).to_string(),
+                ))
+                .unwrap();
+        }
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(format!("Failed to download image: {}", e)))
+                .unwrap();
+        }
+    }
 }
 
 #[cfg(test)]
