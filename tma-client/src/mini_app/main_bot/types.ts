@@ -6,6 +6,7 @@ export interface MainPageProps {
 
 export interface Bot {
   id: string;
+  numeric_id: number;
   name: string;
   avatar?: string;
 
@@ -29,6 +30,7 @@ export type User = {
 export const testBots: Bot[] = [
   {
     id: "1",
+    numeric_id: 1,
     name: "YomlDevBot",
     avatar: "https://avatars.githubusercontent.com/u/84640980?v=4",
     userRole: "owner",
@@ -44,6 +46,7 @@ export const testBots: Bot[] = [
   },
   {
     id: "2",
+    numeric_id: 2,
     name: "YomlDevBot2",
     avatar: "https://avatars.githubusercontent.com/u/84640980?v=4",
     userRole: "owner",

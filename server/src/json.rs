@@ -147,7 +147,8 @@ pub struct MainBotMainPageProps {
 #[derive(Deserialize, Serialize, Debug)]
 /// Telegram Mini App Bot Data for Main Bot pages
 pub struct TMABotData {
-    pub id: u64,
+    pub id: String,
+    pub numeric_id: u64,
     pub name: String,
     pub avatar: Option<String>,
 

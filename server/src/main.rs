@@ -44,6 +44,7 @@ async fn main() {
         .route("/:bot_id/app", get(mini_app))
         .route("/:bot_id/createInvoice", post(create_invoice))
         .route("/:bot_id/updateConfig", post(update_config))
+        .route("/:bot_id/avatar/:user_id", get(avatar_url_handler))
         //main bot routes
         .route("/stardonationservice/controlledBots", get(fetch_user_bots))
         .route("/stardonationservice/addBot", post(add_bot))
@@ -53,8 +54,7 @@ async fn main() {
             post(remove_bot_admin),
         )
         // .route("/stardonationservice/removeBot", post(remove_bot))
-        //util routes
-        .route("/avatar/:user_id", get(avatar_url_handler))
+        
         //app state
         .with_state(arc_app_state);
 

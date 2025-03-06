@@ -18,7 +18,7 @@ use tower::{Service, ServiceExt};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    api, json,
+    api::{self, bot_numeric_id_from_token}, json,
     main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
     AppState, HTML_MINI_APP,
 };
@@ -309,7 +309,8 @@ fn process_owner_bots(
             };
 
             Some(json::TMABotData {
-                id: bot.id.parse::<u64>().unwrap_or(0),
+                id: bot.id.clone(),
+                numeric_id: bot_numeric_id_from_token(&bot.token).unwrap_or(0),
                 name: bot_info_first_name.unwrap_or(bot.id),
                 avatar: None,
                 user_role: "owner".to_string(),
@@ -398,7 +399,8 @@ fn process_admin_bots(
             };
 
             Some(json::TMABotData {
-                id: bot.id.parse::<u64>().unwrap_or(0),
+                id: bot.id.clone(),
+                numeric_id: bot_numeric_id_from_token(&bot.token).unwrap_or(0),
                 name: bot_info_first_name.unwrap_or(bot.id),
                 avatar: None,
                 user_role: "admin".to_string(),
@@ -490,7 +492,8 @@ pub async fn add_bot(
             match res {
                 Ok((bot_id, bot_name)) => {
                     let bot_data = json::TMABotData {
-                        id: bot_id,
+                        id: bot_id.to_string(),
+                        numeric_id: bot_numeric_id_from_token(&payload.bot_token).unwrap_or(0),
                         name: bot_name,
                         avatar: None,
                         user_role: "owner".to_string(),
@@ -611,10 +614,32 @@ pub async fn remove_bot_admin(
 pub async fn avatar_url_handler(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Path(user_id): Path<String>,
+    Path((bot_id, user_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    //todo does need security check?
-    let token = MAIN_BOT_TOKEN;
+    let security_check = state
+        .with_record(&bot_id, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                return Some( bot.token.clone());
+            }
+            None
+        })
+        .await;
+
+    let token = match security_check {
+        Ok(Some(token)) => token,
+        Ok(None) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(serde_json::json!({"error": "security check failure"}).to_string()))
+                .unwrap();
+        }
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(serde_json::json!({"error": e.to_string()}).to_string()))
+                .unwrap();
+        }
+    };
 
     let user_id_parsed = match user_id.parse::<u64>() {
         Ok(id) => id,
@@ -628,7 +653,7 @@ pub async fn avatar_url_handler(
         }
     };
 
-    let avatar_url_result = api::get_avatar_url(token, user_id_parsed).await;
+    let avatar_url_result = api::get_avatar_url(&token, user_id_parsed).await;
 
     match avatar_url_result {
         Ok(Some(avatar_url)) => {

@@ -1,6 +1,6 @@
-import { writable, type Writable } from "svelte/store";
+import { get, writable, type Writable } from "svelte/store";
 import type { MainPageProps } from "./types";
-import { getControlledBots } from "./queries";
+import { getControlledBots, getAvatar } from "./queries";
 
 export type BotsStoreType = {
   isLoaded: boolean;
@@ -35,7 +35,6 @@ export async function loadBotsData(initData: string): Promise<void> {
     if (result.success) {
       const loadTime = performance.now() - appStartTime;
       console.log(`App load time: ${loadTime.toFixed(2)}ms`);
-      console.log("init data", result.data);
 
       botsStore.set({
         isLoaded: true,
@@ -44,6 +43,10 @@ export async function loadBotsData(initData: string): Promise<void> {
         data: result.data,
         loadTime,
       });
+
+      console.log("data", result.data);
+
+      await updateAllAvatars(initData);
     } else {
       botsStore.update((store) => ({
         ...store,
@@ -85,6 +88,8 @@ export async function refreshBotsData(initData: string): Promise<boolean> {
         loadTime,
       });
 
+      await updateAllAvatars(initData);
+
       return true;
     } else {
       botsStore.update((store) => ({
@@ -110,5 +115,110 @@ export async function refreshBotsData(initData: string): Promise<boolean> {
     }));
 
     return false;
+  }
+}
+
+async function updateAllAvatars(initData: string): Promise<void> {
+  const store = get(botsStore);
+  if (!store.data) return;
+
+  try {
+    const updatedData = { ...store.data };
+
+    await Promise.all(
+      updatedData.bots.map(async (bot) => {
+        try {
+          console.log("bot.id", bot.id);
+          const botAvatar = await getAvatarAsObjectUrl(initData, bot.numeric_id.toString());
+          if (botAvatar) {
+            bot.avatar = botAvatar;
+            console.log("bot.avatar ",bot.id, bot.avatar);
+          }
+
+          if (bot.owner && bot.owner.id) {
+            const ownerAvatar = await getAvatarAsObjectUrl(
+              initData,
+              bot.owner.id.toString()
+            );
+            if (ownerAvatar) {
+              bot.owner.avatarUrl = ownerAvatar;
+            }
+          }
+
+          if (bot.admins && bot.admins.length > 0) {
+            await Promise.all(
+              bot.admins.map(async (admin) => {
+                if (admin && admin.id) {
+                  const adminAvatar = await getAvatarAsObjectUrl(
+                    initData,
+                    admin.id.toString()
+                  );
+                  if (adminAvatar) {
+                    admin.avatarUrl = adminAvatar;
+                  }
+                }
+              })
+            );
+          }
+        } catch (error) {
+          console.error(`Error updating avatars for bot ${bot.id}:`, error);
+        }
+      })
+    );
+
+    botsStore.update((store) => ({
+      ...store,
+      data: updatedData,
+    }));
+
+    console.log("All avatars updated successfully");
+  } catch (error) {
+    console.error("Error updating all avatars:", error);
+  }
+}
+
+export async function getAvatarAsObjectUrl(
+  initData: string,
+  userId: string
+): Promise<string | null> {
+  console.log("getAvatarAsObjectUrl", userId);
+  try {
+    const blob = await getAvatar(initData, userId);
+
+    if (blob) {
+      return URL.createObjectURL(blob);
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting avatar ", userId, " as object url:", error);
+    return null;
+  }
+}
+
+export function revokeAvatarObjectUrl(objectUrl: string | null): void {
+  if (objectUrl) {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export function revokeAllAvatarObjectUrls(): void {
+  const store = get(botsStore);
+  if (store.data) {
+    store.data.bots.forEach((bot) => {
+      if (bot.avatar) {
+        revokeAvatarObjectUrl(bot.avatar);
+      }
+
+      if (bot.owner.avatarUrl) {
+        revokeAvatarObjectUrl(bot.owner.avatarUrl);
+      }
+
+      bot.admins.forEach((admin) => {
+        if (admin.avatarUrl) {
+          revokeAvatarObjectUrl(admin.avatarUrl);
+        }
+      });
+    });
   }
 }

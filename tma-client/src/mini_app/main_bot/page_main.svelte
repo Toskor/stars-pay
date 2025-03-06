@@ -17,7 +17,12 @@
     AddCircleIcon,
   } from "telegram-ui";
   import { get } from "svelte/store";
-  import { botsStore, refreshBotsData, type BotsStoreType } from "./store";
+  import {
+    botsStore,
+    refreshBotsData,
+    getAvatarAsObjectUrl,
+    type BotsStoreType,
+  } from "./store";
 
   let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
 

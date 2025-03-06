@@ -80,6 +80,37 @@ class ApiClient {
       body: JSON.stringify({ bot_token: botToken }),
     });
   }
+
+  async getAvatar(initData: string, userId: string): Promise<Blob | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/avatar/${userId}`, {
+        method: "GET",
+        headers: {
+          "X-Telegram-InitData": initData,
+          //todo remove
+          "ngrok-skip-browser-warning": "",
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to fetch avatar: ${response.status}`);
+        return null;
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (contentType !== "image/jpeg") {
+        console.error(`Unexpected content type: ${contentType}`);
+        return null;
+      }
+
+      return await response.blob();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error(`Avatar fetch error: ${errorMessage}`);
+      return null;
+    }
+  }
 }
 
 const api = new ApiClient(
@@ -88,3 +119,4 @@ const api = new ApiClient(
 
 export const getControlledBots = api.getControlledBots.bind(api);
 export const addBot = api.addBot.bind(api);
+export const getAvatar = api.getAvatar.bind(api);

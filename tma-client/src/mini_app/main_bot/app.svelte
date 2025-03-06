@@ -3,9 +3,9 @@
   import { platform } from "telegram-ui";
   import type { Page } from "./types";
   import PageMain from "./page_main.svelte";
-  import { botsStore, loadBotsData } from "./store";
+  import { botsStore, loadBotsData, revokeAllAvatarObjectUrls } from "./store";
 
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
 
   import PageEdit from "./page_edit.svelte";
   import PageCreate from "./page_create.svelte";
@@ -47,6 +47,10 @@
         document.body.classList.remove("wrapper-ios");
       }
     };
+  });
+
+  onDestroy(() => {
+    revokeAllAvatarObjectUrls();
   });
 </script>
 
