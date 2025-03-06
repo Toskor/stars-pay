@@ -16,7 +16,8 @@
   import { addBot } from "./queries";
   import { botsStore } from "./store";
   import { get } from "svelte/store";
-  let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
+  let { navigateTo }: { navigateTo: (page: Page, bot?: Bot) => void } =
+    $props();
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -92,6 +93,7 @@
           if (res.success && res.data && res.data.bot_data) {
             const newBot: Bot = {
               id: res.data.bot_data.id,
+              numeric_id: res.data.bot_data.numeric_id,
               name: res.data.bot_data.name,
               avatar: res.data.bot_data.avatar || "",
               userRole: res.data.bot_data.userRole,

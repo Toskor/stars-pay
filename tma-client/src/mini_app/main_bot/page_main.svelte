@@ -24,7 +24,8 @@
     type BotsStoreType,
   } from "./store";
 
-  let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
+  let { navigateTo }: { navigateTo: (page: Page, bot?: Bot) => void } =
+    $props();
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -152,7 +153,7 @@
                 <Button
                   mode="bezeled"
                   size="s"
-                  onclick={() => navigateTo("edit")}>Edit</Button
+                  onclick={() => navigateTo("edit", bot)}>Edit</Button
                 >
               {/snippet}
 

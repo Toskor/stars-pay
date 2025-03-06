@@ -115,7 +115,7 @@ impl DataBase {
                                 token,
                                 secret_token,
                                 owner,
-                                admins,
+                                admins: admins.into_iter().filter(|&id| id != owner).collect(),
                             }))
                         } else {
                             Ok(None)
@@ -149,6 +149,8 @@ impl DataBase {
                     let admins_json = row.get_ref(4)?.as_str()?;
                     let admins: Vec<u64> =
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
+                    let admins = admins.into_iter().filter(|&id| id != owner_id).collect();
+
                     Ok(DBBot { id, token, secret_token, owner, admins })
                 })?;
                 let mut bots: Vec<DBBot> = vec![];
@@ -374,7 +376,11 @@ mod tests {
             .await
             .expect("Failed to create database");
 
-        db.add_bot_admin(bot_id.to_string(), admin_id_1).await.unwrap();
-        db.add_bot_admin(bot_id.to_string(), admin_id_2).await.unwrap();
+        db.add_bot_admin(bot_id.to_string(), admin_id_1)
+            .await
+            .unwrap();
+        db.add_bot_admin(bot_id.to_string(), admin_id_2)
+            .await
+            .unwrap();
     }
 }

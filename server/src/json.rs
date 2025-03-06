@@ -173,19 +173,21 @@ pub struct TMAUserData {
     pub avatar_url: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct UserProfilePhotos {
     pub ok: bool,
-    pub result: UserProfilePhotosResult,
+    pub result: Option<UserProfilePhotosResult>,
+    pub error_code: Option<u32>,
+    pub description: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct UserProfilePhotosResult {
     pub total_count: u32,
     pub photos: Vec<Vec<PhotoSize>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PhotoSize {
     pub file_id: String,
     pub file_unique_id: String,

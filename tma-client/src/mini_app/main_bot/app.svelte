@@ -1,7 +1,7 @@
 <script lang="ts">
   import "telegram-ui/styles";
   import { platform } from "telegram-ui";
-  import type { Page } from "./types";
+  import type { Page, Bot } from "./types";
   import PageMain from "./page_main.svelte";
   import { botsStore, loadBotsData, revokeAllAvatarObjectUrls } from "./store";
 
@@ -15,9 +15,13 @@
 
   let currentPage: Page = $state("main");
   let isAppLoading = $state(true);
+  let selectedBot: Bot | null = $state(null);
 
-  function navigateTo(page: Page) {
+  function navigateTo(page: Page, bot?: Bot) {
     currentPage = page;
+    if (page === "edit" && bot) {
+      selectedBot = bot;
+    }
     app.BackButton.isVisible = page !== "main";
     window.scrollTo(0, 0);
   }
@@ -58,7 +62,7 @@
   {#if currentPage === "main"}
     <PageMain {navigateTo} />
   {:else if currentPage === "edit"}
-    <PageEdit {navigateTo} />
+    <PageEdit {navigateTo} bot={selectedBot} />
   {:else if currentPage === "create"}
     <PageCreate {navigateTo} />
   {/if}

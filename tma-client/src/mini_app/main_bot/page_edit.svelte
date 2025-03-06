@@ -18,21 +18,26 @@
     EditIcon,
     DeleteIcon,
   } from "telegram-ui";
-  import type { Page } from "./types";
-  let { navigateTo }: { navigateTo: (page: Page) => void } = $props();
+  import type { Page, Bot } from "./types";
+  let {
+    navigateTo,
+    bot,
+  }: { navigateTo: (page: Page, bot?: Bot) => void; bot: Bot | null } =
+    $props();
 
   let platform = $state<"ios" | "base">("ios");
   let isIOS = $derived(platform === "ios");
 
-  onMount(() => {});
+  onMount(() => {
+    if (!bot) {
+      navigateTo("main");
+    }
+  });
 </script>
 
 <List>
   <div class="header--center-container">
-    <Avatar
-      size={128}
-      src="https://i.pinimg.com/originals/d0/cf/a8/d0cfa8b3f2b9aa687e99cdd88bb82f10.jpg"
-    />
+    <Avatar size={128} src={bot?.avatar || ""} acronym={bot?.name?.[0] || ""} />
   </div>
 
   <Section header="Owner">
@@ -40,16 +45,17 @@
       {#snippet before()}
         <Avatar
           size={48}
-          src="https://avatars.githubusercontent.com/u/84640980?v=4"
+          src={bot?.owner?.avatarUrl || ""}
+          acronym={bot?.owner?.name?.[0] || ""}
         />
       {/snippet}
 
       {#snippet children()}
-        Yury Korolev
+        {bot?.owner?.name || ""}
       {/snippet}
 
       {#snippet subtitle()}
-        88005553535
+        {bot?.owner?.username || ""}
       {/snippet}
     </Cell>
   </Section>
@@ -62,49 +68,39 @@
       </div>
     {/snippet}
 
-    <Cell>
-      {#snippet before()}
-        <Avatar
-          size={48}
-          src="https://i.pinimg.com/originals/d0/cf/a8/d0cfa8b3f2b9aa687e99cdd88bb82f10.jpg"
-        />
-      {/snippet}
+    {#if bot?.admins && bot.admins.length > 0}
+      {#each bot.admins as admin, index}
+        <Cell>
+          {#snippet before()}
+            <Avatar
+              size={48}
+              src={admin.avatarUrl || ""}
+              acronym={admin.name?.[0] || ""}
+            />
+          {/snippet}
 
-      {#snippet after()}
-        <Button mode="destructive" size="s">Remove</Button>
-      {/snippet}
+          {#snippet after()}
+            <Button mode="destructive" size="s">Remove</Button>
+          {/snippet}
 
-      {#snippet children()}
-        Username 1
-      {/snippet}
+          {#snippet children()}
+            {admin.name || ""}
+          {/snippet}
 
-      {#snippet subtitle()}
-        2364409283
-      {/snippet}
-    </Cell>
+          {#snippet subtitle()}
+            {admin.username || ""}
+          {/snippet}
+        </Cell>
 
-    <Divider />
-
-    <Cell>
-      {#snippet before()}
-        <Avatar
-          size={48}
-          src="https://i1.sndcdn.com/artworks-000041319143-zgx70e-t500x500.jpg"
-        />
-      {/snippet}
-
-      {#snippet after()}
-        <Button mode="destructive" size="s">Remove</Button>
-      {/snippet}
-
-      {#snippet children()}
-        Username 2
-      {/snippet}
-
-      {#snippet subtitle()}
-        2364409283
-      {/snippet}
-    </Cell>
+        {#if index < bot.admins.length - 1}
+          <Divider />
+        {/if}
+      {/each}
+    {:else}
+      <Cell>
+        <div class="no-admins">No admins added yet</div>
+      </Cell>
+    {/if}
   </Section>
 
   <Section>
