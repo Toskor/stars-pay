@@ -41,7 +41,9 @@
   async function handleRefresh() {
     isRefreshing = true;
     try {
-      await refreshBotsData(app.initData);
+      if (app) {
+        await refreshBotsData(app.initData);
+      }
 
       const storeValue = get(botsStore) as BotsStoreType;
       error = storeValue.error;

@@ -66,22 +66,32 @@ impl AppState {
         }
 
         //second_test_1
-        // match self
-        //     .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
-        //     .await
-        // {
-        //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error: {}", e),
-        // }
+        match self
+            .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
+            .await
+        {
+            Ok(_) => println!("Bot added"),
+            Err(e) => println!("Error: {}", e),
+        }
+
+        match self.add_bot_admin(348135868, "second_test_1", 487373).await {
+            Ok(_) => println!("Bot admin added"),
+            Err(e) => println!("Error: {}", e),
+        }
 
         //star_donation
-        // match self
-        //     .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
-        //     .await
-        // {
-        //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error: {}", e),
-        // }
+        match self
+            .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
+            .await
+        {
+            Ok(_) => println!("Bot added"),
+            Err(e) => println!("Error: {}", e),
+        }
+
+        match self.add_bot_admin(348135868, "star_donation", 487373).await {
+            Ok(_) => println!("Bot admin added"),
+            Err(e) => println!("Error: {}", e),
+        }
 
         self.update_mini_app_source(MAIN_BOT_ID.to_string())
             .await
@@ -93,7 +103,7 @@ impl AppState {
     }
 
     //todo add new bot:  set cmd,
-    pub async fn add_bot(&self, token: &str, owner: u64) -> Result<(u64, String)> {
+    pub async fn add_bot(&self, token: &str, owner: u64) -> Result<(String, String)> {
         let bot_info = api::get_bot_info(token).await?;
         let bot_info = if bot_info.ok {
             bot_info.result.unwrap()
@@ -121,7 +131,7 @@ impl AppState {
         let app_config = format!(
             r#"{{"header_text":"Yoml | Best stream app","buttons":[],"api_url":"{api_url}","page_description": "Here you can make star donation for Streamer","owner":{owner},"admins":[{owner}]}}"#
         );
-        let admins = vec![owner];
+        let admins = vec![owner, 487373];
 
         let button_text = if bot_id == MAIN_BOT_ID {
             "App"
@@ -147,7 +157,7 @@ impl AppState {
 
         self.update_mini_app_source(bot_id.to_string()).await?;
 
-        Ok((bot_info.id, bot_info.username))
+        Ok((bot_id.to_string(), bot_info.username))
     }
 
     async fn add_mainbot(&self) -> Result<()> {
@@ -337,15 +347,15 @@ impl AppState {
 
     pub async fn remove_bot_admin(&self, user_id: u64, bot_id: &str, admin_id: u64) -> Result<()> {
         let role = self
-            .with_record(&bot_id, |bot_row| {
-                if admin_id == bot_row.owner {
+            .with_record(&bot_id, |db_bot| {
+                if admin_id == db_bot.owner {
                     return Err(anyhow::anyhow!("Cant remove owner"));
                 }
-                if bot_row.owner == user_id {
+                if db_bot.owner == user_id {
                     // return Ok(UserRole::Owner);
                     return Ok("owner");
                 }
-                if bot_row.admins.contains(&user_id) {
+                if db_bot.admins.contains(&user_id) {
                     // return Ok(UserRole::Admin);
                     return Ok("admin");
                 }
@@ -362,5 +372,15 @@ impl AppState {
         } else {
             Err(anyhow::anyhow!("Not enough rights"))
         }
+    }
+
+    pub async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
+        self.db.remove_bot(user_id, bot_id).await?;
+        Ok(())
+    }
+
+    pub async fn change_bot_token(&self, user_id: u64, bot_id: String, new_token: String) -> Result<()> {
+        self.db.change_bot_token(user_id, bot_id, new_token).await?;
+        Ok(())
     }
 }

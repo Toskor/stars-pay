@@ -6,8 +6,7 @@ use axum::{
 };
 use db::{DBBot, DataBase};
 use handlers::{
-    add_bot, add_bot_admin, avatar_url_handler, create_invoice, fetch_user_bots,
-    mini_app, remove_bot_admin, update_config, webhook_handler,
+    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, create_invoice, fetch_user_bots, mini_app, remove_bot, remove_bot_admin, update_config, webhook_handler
 };
 
 use main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
@@ -53,7 +52,8 @@ async fn main() {
             "/stardonationservice/removeBotAdmin",
             post(remove_bot_admin),
         )
-        // .route("/stardonationservice/removeBot", post(remove_bot))
+        .route("/stardonationservice/removeBot", post(remove_bot))
+        .route("/stardonationservice/changeBotToken", post(change_bot_token))
         
         //app state
         .with_state(arc_app_state);

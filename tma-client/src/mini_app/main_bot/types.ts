@@ -1,4 +1,4 @@
-export type Page = "main" | "edit" | "create";
+export type Page = "main" | "edit" | "create" | "change_token";
 
 export interface MainPageProps {
   bots: Bot[];

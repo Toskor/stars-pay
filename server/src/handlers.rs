@@ -18,7 +18,8 @@ use tower::{Service, ServiceExt};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    api::{self, bot_numeric_id_from_token}, json,
+    api::{self, bot_numeric_id_from_token},
+    json,
     main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
     AppState, HTML_MINI_APP,
 };
@@ -492,7 +493,7 @@ pub async fn add_bot(
             match res {
                 Ok((bot_id, bot_name)) => {
                     let bot_data = json::TMABotData {
-                        id: bot_id.to_string(),
+                        id: bot_id,
                         numeric_id: bot_numeric_id_from_token(&payload.bot_token).unwrap_or(0),
                         name: bot_name,
                         avatar: None,
@@ -619,7 +620,7 @@ pub async fn avatar_url_handler(
     let security_check = state
         .with_record(&bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
-                return Some( bot.token.clone());
+                return Some(bot.token.clone());
             }
             None
         })
@@ -630,13 +631,17 @@ pub async fn avatar_url_handler(
         Ok(None) => {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(serde_json::json!({"error": "security check failure"}).to_string()))
+                .body(Body::from(
+                    serde_json::json!({"error": "security check failure"}).to_string(),
+                ))
                 .unwrap();
         }
         Err(e) => {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(serde_json::json!({"error": e.to_string()}).to_string()))
+                .body(Body::from(
+                    serde_json::json!({"error": e.to_string()}).to_string(),
+                ))
                 .unwrap();
         }
     };
@@ -717,6 +722,81 @@ pub async fn avatar_url_handler(
     }
 }
 
+pub async fn remove_bot(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::RemoveBotQueryParam>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(MAIN_BOT_ID, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                return Some(user.id);
+            }
+            None
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(user_id)) => {
+            let res = state.remove_bot(user_id, payload.bot_id).await;
+            match res {
+                Ok(()) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "success"})),
+                ),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
+            }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+pub async fn change_bot_token(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::ChangeBotTokenQueryParam>,
+) -> impl IntoResponse {
+    let security_check = state.with_record(MAIN_BOT_ID, |bot| {
+        if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+            return Some(user.id);
+        }
+        None
+    }).await;
+    
+    match security_check {
+        Ok(Some(user_id)) => {
+            let res = state.change_bot_token(user_id, payload.bot_id, payload.new_token).await;
+            match res {
+                Ok(()) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "success"})),
+                ),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
 // #[axum::debug_handler]
 pub async fn webhook_handler(
     headers: HeaderMap,

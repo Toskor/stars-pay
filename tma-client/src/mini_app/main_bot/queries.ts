@@ -111,6 +111,40 @@ class ApiClient {
       return null;
     }
   }
+
+  async removeBotAdmin(
+    initData: string,
+    botId: string,
+    adminId: number
+  ): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/removeBotAdmin", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ bot_id: botId, admin_id: adminId }),
+    });
+  }
+
+  async removeBot(initData: string, botId: string): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/removeBot", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ bot_id: botId }),
+    });
+  }
+
+  async changeBotToken(initData: string, botId: string, newToken: string): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/changeBotToken", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ bot_id: botId, new_token: newToken }),
+    });
+  }
 }
 
 const api = new ApiClient(
@@ -120,3 +154,6 @@ const api = new ApiClient(
 export const getControlledBots = api.getControlledBots.bind(api);
 export const addBot = api.addBot.bind(api);
 export const getAvatar = api.getAvatar.bind(api);
+export const removeBotAdmin = api.removeBotAdmin.bind(api);
+export const removeBot = api.removeBot.bind(api);
+export const changeBotToken = api.changeBotToken.bind(api);

@@ -139,6 +139,17 @@ pub struct RemoveBotAdminQueryParam {
     pub admin_id: u64,
 }
 
+#[derive(Deserialize)]
+pub struct RemoveBotQueryParam {
+    pub bot_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChangeBotTokenQueryParam {
+    pub bot_id: String,
+    pub new_token: String,
+}
+
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MainBotMainPageProps {
     pub bots: Vec<TMABotData>,

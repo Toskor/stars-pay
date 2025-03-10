@@ -315,7 +315,11 @@ impl DataBase {
                 stmt.query_row(named_params! { ":id": &bot_id }, |row| row.get(0))?;
 
             let mut admins: Vec<u64> = serde_json::from_str(&admins_json).map_err(map_serde_err)?;
-            admins.push(admin_id);
+
+            if !admins.contains(&admin_id) {
+                admins.push(admin_id);
+            }
+
             let admins_json = serde_json::to_string(&admins).map_err(map_serde_err)?;
 
             conn.execute(
@@ -342,6 +346,65 @@ impl DataBase {
             conn.execute(
                 "UPDATE bots SET admins = :admins WHERE id = :id",
                 named_params! { ":admins": &admins_json, ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
+        let conn = &self.conn;
+
+        // First, check if the user is the owner of the bot
+        let bot_id_ = bot_id.clone();
+        let owner = conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare_cached("SELECT owner FROM bots WHERE id = :id")?;
+                let owner: u64 =
+                    stmt.query_row(named_params! { ":id": &bot_id_ }, |row| row.get(0))?;
+                Ok::<_, async_rusqlite::Error>(owner)
+            })
+            .await?;
+
+        // If the user is not the owner, return an error
+        if owner != user_id {
+            return Err(anyhow::anyhow!("Only owner can delete bot"));
+        }
+
+        // If the user is the owner, proceed with deletion
+        conn.call(move |conn| {
+            conn.execute(
+                "DELETE FROM bots WHERE id = :id",
+                named_params! { ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn change_bot_token(&self, user_id: u64, bot_id: String, new_token: String) -> Result<()> {
+        let conn = &self.conn;
+
+        // First, check if the user is the owner of the bot
+        let bot_id_ = bot_id.clone();
+        let owner = conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare_cached("SELECT owner FROM bots WHERE id = :id")?;
+                let owner: u64 =
+                    stmt.query_row(named_params! { ":id": &bot_id_ }, |row| row.get(0))?;
+                Ok::<_, async_rusqlite::Error>(owner)
+            })
+            .await?;
+
+        if owner != user_id {
+            return Err(anyhow::anyhow!("Only owner can change bot token"));
+        }
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET token = :token WHERE id = :id",
+                named_params! { ":token": &new_token, ":id": &bot_id },
             )?;
             Ok::<(), async_rusqlite::Error>(())
         })

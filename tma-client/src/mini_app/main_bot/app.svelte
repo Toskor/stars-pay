@@ -9,6 +9,7 @@
 
   import PageEdit from "./page_edit.svelte";
   import PageCreate from "./page_create.svelte";
+  import PageChangeToken from "./page_change_token.svelte";
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -19,18 +20,22 @@
 
   function navigateTo(page: Page, bot?: Bot) {
     currentPage = page;
-    if (page === "edit" && bot) {
+    if ((page === "edit" || page === "change_token") && bot) {
       selectedBot = bot;
     }
-    app.BackButton.isVisible = page !== "main";
+    if (app) {
+      app.BackButton.isVisible = page !== "main";
+    }
     window.scrollTo(0, 0);
   }
 
   onMount(() => {
-    app.expand();
-    app.BackButton.onClick(() => {
-      navigateTo("main");
-    });
+    if (app) {
+      app.expand();
+      app.BackButton.onClick(() => {
+        navigateTo("main");
+      });
+    }
 
     let isIOS = platform() === "ios";
 
@@ -40,9 +45,11 @@
       document.body.classList.add("wrapper-ios");
     }
 
-    loadBotsData(app.initData).then(() => {
-      isAppLoading = false;
-    });
+    if (app) {
+      loadBotsData(app.initData).then(() => {
+        isAppLoading = false;
+      });
+    }
 
     return () => {
       document.body.classList.remove("wrapper");
@@ -65,6 +72,8 @@
     <PageEdit {navigateTo} bot={selectedBot} />
   {:else if currentPage === "create"}
     <PageCreate {navigateTo} />
+  {:else if currentPage === "change_token"}
+    <PageChangeToken {navigateTo} bot={selectedBot} />
   {/if}
 </div>
 

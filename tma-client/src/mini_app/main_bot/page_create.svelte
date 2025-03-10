@@ -86,9 +86,10 @@
       isLoading = true;
       errorMessage = null;
 
-      addBot(app.initData, value)
-        .then((res) => {
-          isLoading = false;
+      if (app) {
+        addBot(app.initData, value)
+          .then((res) => {
+            isLoading = false;
 
           if (res.success && res.data && res.data.bot_data) {
             const newBot: Bot = {
@@ -138,8 +139,9 @@
         })
         .catch((err) => {
           isLoading = false;
-          errorMessage = err.message || "An unexpected error occurred";
-        });
+            errorMessage = err.message || "An unexpected error occurred";
+          });
+      }
     }}
   >
     {isLoading ? "Adding..." : "Add Bot"}

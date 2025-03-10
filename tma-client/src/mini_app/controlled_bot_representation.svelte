@@ -57,24 +57,4 @@
   }
 </script>
 
-<div class="section">
-  <span>{props.controll_type} - {props.bot_id} </span>
-  {#if props.controll_type === "owner"}
-    <button onclick={() => add_admin(props.bot_id)}>
-      Add admin
-    </button>
-    <button onclick={() => remove_admin(props.bot_id)}>
-      Remove admin
-    </button>
-  {:else if props.controll_type === "admin"}
-    <!-- <button onclick={() => admin_action(props.bot_id)}>
-      Some admin button
-    </button> -->
-  {/if}
-</div>
 
-<style>
-  .section {
-    display: flex;
-  }
-</style>
