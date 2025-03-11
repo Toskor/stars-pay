@@ -37,14 +37,6 @@
     }
   });
 
-  onDestroy(() => {
-    if (app) {
-      app.BackButton.onClick(() => {
-        navigateTo("main");
-      });
-    }
-  });
-
   let value = $state("");
   let platform = $state<"ios" | "base">("ios");
   let isIOS = $derived(platform === "ios");

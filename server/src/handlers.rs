@@ -381,11 +381,12 @@ fn process_admin_bots(
             };
 
             let owner_info = match owner_info_task.await {
-                Ok(Ok(Some(owner))) => owner,
-                Ok(Ok(None)) => {
-                    //todo here need to log error
-                    println!("Owner info not found for bot: {}", bot.id);
-                    return None;
+                Ok(Ok(owner_info)) => {
+                    if owner_info.ok {
+                        owner_info.result.unwrap()
+                    } else {
+                        return None;
+                    }
                 }
                 Ok(Err(e)) => {
                     //todo here need to log error
@@ -459,13 +460,19 @@ async fn process_admin_info(
 
     for admin_future in admin_futures {
         if let Ok((admin_id, admin_info)) = admin_future.await {
-            if let Ok(Some(admin)) = admin_info {
-                admins.push(json::TMAUserData {
-                    id: admin_id,
-                    username: admin.username,
-                    name: format!("{} {}", admin.first_name, admin.last_name),
-                    avatar_url: None,
-                });
+            if let Ok(admin) = admin_info {
+                if admin.ok {
+                    admins.push(json::TMAUserData {
+                        id: admin_id,
+                        name: format!(
+                            "{} {}",
+                            admin.result.as_ref().unwrap().first_name,
+                            admin.result.as_ref().unwrap().last_name
+                        ),
+                        username: admin.result.unwrap().username,
+                        avatar_url: None,
+                    });
+                }
             }
         }
     }
@@ -550,9 +557,9 @@ pub async fn add_bot_admin(
                 .add_bot_admin(user_id, &payload.bot_id, payload.admin_id)
                 .await;
             match res {
-                Ok(()) => (
+                Ok(admin_info) => (
                     StatusCode::OK,
-                    Json(serde_json::json!({"status": "success"})),
+                    Json(serde_json::json!({"status": "success", "admin_info": admin_info})),
                 ),
                 Err(e) => (
                     StatusCode::BAD_REQUEST,
@@ -749,7 +756,7 @@ pub async fn remove_bot(
                     Json(serde_json::json!({"error": e.to_string()})),
                 ),
             }
-            }
+        }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "security check failure"})),
@@ -766,16 +773,20 @@ pub async fn change_bot_token(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::ChangeBotTokenQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state.with_record(MAIN_BOT_ID, |bot| {
-        if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
-            return Some(user.id);
-        }
-        None
-    }).await;
-    
+    let security_check = state
+        .with_record(MAIN_BOT_ID, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                return Some(user.id);
+            }
+            None
+        })
+        .await;
+
     match security_check {
         Ok(Some(user_id)) => {
-            let res = state.change_bot_token(user_id, payload.bot_id, payload.new_token).await;
+            let res = state
+                .change_bot_token(user_id, payload.bot_id, payload.new_token)
+                .await;
             match res {
                 Ok(()) => (
                     StatusCode::OK,

@@ -1,4 +1,4 @@
-import type { MainPageProps, Bot } from "./types";
+import type { MainPageProps, Bot, User } from "./types";
 
 type ApiResponse<T> =
   | {
@@ -126,7 +126,10 @@ class ApiClient {
     });
   }
 
-  async removeBot(initData: string, botId: string): Promise<ApiResponse<{ status: string }>> {
+  async removeBot(
+    initData: string,
+    botId: string
+  ): Promise<ApiResponse<{ status: string }>> {
     return this.request<{ status: string }>("/removeBot", {
       method: "POST",
       headers: {
@@ -136,13 +139,39 @@ class ApiClient {
     });
   }
 
-  async changeBotToken(initData: string, botId: string, newToken: string): Promise<ApiResponse<{ status: string }>> {
+  async changeBotToken(
+    initData: string,
+    botId: string,
+    newToken: string
+  ): Promise<ApiResponse<{ status: string }>> {
     return this.request<{ status: string }>("/changeBotToken", {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
       },
       body: JSON.stringify({ bot_id: botId, new_token: newToken }),
+    });
+  }
+
+  async addAdmin(
+    initData: string,
+    botId: string,
+    adminId: number
+  ): Promise<
+    ApiResponse<{
+      status: string;
+      admin_info: User;
+    }>
+  > {
+    return this.request<{
+      status: string;
+      admin_info: User;
+    }>("/addBotAdmin", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ bot_id: botId, admin_id: adminId }),
     });
   }
 }
@@ -152,8 +181,9 @@ const api = new ApiClient(
 );
 
 export const getControlledBots = api.getControlledBots.bind(api);
-export const addBot = api.addBot.bind(api);
+export const addAdmin = api.addAdmin.bind(api);
 export const getAvatar = api.getAvatar.bind(api);
 export const removeBotAdmin = api.removeBotAdmin.bind(api);
 export const removeBot = api.removeBot.bind(api);
 export const changeBotToken = api.changeBotToken.bind(api);
+export const addBot = api.addBot.bind(api);

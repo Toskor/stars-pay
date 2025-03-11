@@ -1,9 +1,15 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use lru::LruCache;
-use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 use tokio::sync::Mutex;
+use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
-use crate::{api, db::{DBBot, DataBase}, main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN}, CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP};
+use crate::json;
+use crate::{
+    api,
+    db::{DBBot, DataBase},
+    main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
+    CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum UserRole {
@@ -321,27 +327,48 @@ impl AppState {
         })
     }
 
-    pub async fn add_bot_admin(&self, user_id: u64, bot_id: &str, admin_id: u64) -> Result<()> {
-        let role = self
-            .with_record(&bot_id, |bot_row| {
-                if bot_row.owner == user_id {
-                    // return Ok(UserRole::Owner);
-                    return "owner";
+    pub async fn add_bot_admin(
+        &self,
+        user_id: u64,
+        bot_id: &str,
+        admin_id: u64,
+    ) -> Result<json::TMAUserData> {
+        let is_owner = self
+            .with_record(&bot_id, |db_bot| {
+                if db_bot.admins.contains(&user_id) {
+                    println!("User is already admin");
+                    return Err(anyhow::anyhow!("User is already admin"));
                 }
-                if bot_row.admins.contains(&user_id) {
-                    // return Ok(UserRole::Admin);
-                    return "admin";
+
+                if db_bot.owner == user_id {
+                    Ok(true)
+                } else {
+                    Err(anyhow::anyhow!("Only owner can add admin"))
                 }
-                // return Ok(UserRole::User);
-                return "user";
             })
             .await?;
 
-        if role == "owner" || role == "admin" {
-            self.db.add_bot_admin(bot_id.to_string(), admin_id).await?;
-            Ok(())
+        if is_owner? {
+            let user_info = api::get_user_info(MAIN_BOT_TOKEN, admin_id).await?;
+            if user_info.ok {
+                let user_data = user_info.result.unwrap();
+                let tma_user_data = json::TMAUserData {
+                    id: user_data.id,
+                    username: user_data.username,
+                    name: format!("{} {}", user_data.first_name, user_data.last_name),
+                    avatar_url: None,
+                };
+                self.db.add_bot_admin(bot_id.to_string(), admin_id).await?;
+                Ok(tma_user_data)
+            } else {
+                Err(anyhow::anyhow!(
+                    "{} {}",
+                    user_info.error_code.unwrap(),
+                    user_info.description.unwrap()
+                ))
+            }
         } else {
-            Err(anyhow::anyhow!("Not enough rights"))
+            Err(anyhow::anyhow!("Only owner can add admin"))
         }
     }
 
@@ -379,7 +406,12 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn change_bot_token(&self, user_id: u64, bot_id: String, new_token: String) -> Result<()> {
+    pub async fn change_bot_token(
+        &self,
+        user_id: u64,
+        bot_id: String,
+        new_token: String,
+    ) -> Result<()> {
         self.db.change_bot_token(user_id, bot_id, new_token).await?;
         Ok(())
     }

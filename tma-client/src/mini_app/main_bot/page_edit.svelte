@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
 
   import {
     Button,
@@ -31,29 +32,50 @@
   let isIOS = $derived(platform === "ios");
   let isRemoving = $state<number | null>(null);
   let isDeletingBot = $state<boolean>(false);
+  let currentBot = $state<Bot | undefined>(bot || undefined);
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
 
   onMount(() => {
-    if (!bot) {
+    if (!currentBot) {
       navigateTo("main");
+      return;
     }
+
+    if (app) {
+      app.BackButton.onClick(() => {
+        navigateTo("main");
+      });
+    }
+
+    const unsubscribe = botsStore.subscribe((store) => {
+      if (store.data && store.data.bots && currentBot) {
+        const botId = currentBot.id;
+        const updatedBot = store.data.bots.find((b) => b.id === botId);
+        if (updatedBot) {
+          currentBot = updatedBot;
+        }
+      }
+    });
+
+    return unsubscribe;
   });
 
   async function removeAdmin(adminId: number, adminName: string) {
-    if (!app || !bot) return;
+    if (!app || !currentBot) return;
 
     isRemoving = adminId;
     try {
-      const response = await removeBotAdmin(app.initData, bot.id, adminId);
+      const botId = currentBot.id; // Сохраняем ID в локальную переменную
+      const response = await removeBotAdmin(app.initData, botId, adminId);
 
       if (response.success) {
         // Update the store by removing the admin from the current bot
         botsStore.update((store) => {
           if (store.data && store.data.bots) {
             const updatedBots = store.data.bots.map((storeBot) => {
-              if (storeBot.id === bot.id) {
+              if (currentBot && storeBot.id === currentBot.id) {
                 return {
                   ...storeBot,
                   admins: storeBot.admins.filter((a) => a.id !== adminId),
@@ -72,11 +94,6 @@
           }
           return store;
         });
-
-        // Update the local bot object to reflect changes in UI
-        if (bot) {
-          bot.admins = bot.admins.filter((a) => a.id !== adminId);
-        }
 
         // Show success message
         app.showPopup({
@@ -106,16 +123,19 @@
   }
 
   async function handleRemoveBot() {
-    if (!app || !bot) return;
+    if (!app || !currentBot) return;
+
+    const botName = currentBot.name; // Сохраняем имя в локальную переменную
+    const botId = currentBot.id; // Сохраняем ID в локальную переменную
 
     // Show confirmation popup
     app.showConfirm(
-      `Are you sure you want to remove bot "${bot.name}"? This action cannot be undone.`,
+      `Are you sure you want to remove bot "${botName}"? This action cannot be undone.`,
       async (confirmed: boolean) => {
         if (confirmed) {
           try {
             isDeletingBot = true;
-            const response = await removeBot(app.initData, bot.id);
+            const response = await removeBot(app.initData, botId);
 
             if (response.success) {
               // Update the store by removing the bot
@@ -125,7 +145,7 @@
                     ...store,
                     data: {
                       ...store.data,
-                      bots: store.data.bots.filter((b) => b.id !== bot.id),
+                      bots: store.data.bots.filter((b) => b.id !== botId),
                     },
                   };
                 }
@@ -135,7 +155,7 @@
               // Show success message
               app.showPopup({
                 title: "Success",
-                message: `Bot ${bot.name} removed successfully`,
+                message: `Bot ${botName} removed successfully`,
                 buttons: [{ type: "ok" }],
               });
 
@@ -168,25 +188,39 @@
 
 <List>
   <div class="header--center-container">
-    <Avatar size={128} src={bot?.avatar || ""} acronym={bot?.name?.[0] || ""} />
+    <Avatar
+      size={128}
+      src={currentBot?.avatar || ""}
+      acronym={currentBot?.name?.[0] || ""}
+    />
+    <Title level={3} weight={1}>{currentBot?.name || ""}</Title>
   </div>
+
+  <Section>
+    <Cell onclick={() => navigateTo("manage_donation_buttons", currentBot)}>
+      Manage donation buttons
+      {#snippet after()}
+        <ForwardIcon />
+      {/snippet}
+    </Cell>
+  </Section>
 
   <Section header="Owner">
     <Cell>
       {#snippet before()}
         <Avatar
           size={48}
-          src={bot?.owner?.avatarUrl || ""}
-          acronym={bot?.owner?.name?.[0] || ""}
+          src={currentBot?.owner?.avatarUrl || ""}
+          acronym={currentBot?.owner?.name?.[0] || ""}
         />
       {/snippet}
 
       {#snippet children()}
-        {bot?.owner?.name || ""}
+        {currentBot?.owner?.name || ""}
       {/snippet}
 
       {#snippet subtitle()}
-        {bot?.owner?.username || ""}
+        {currentBot?.owner?.username || ""}
       {/snippet}
     </Cell>
   </Section>
@@ -195,12 +229,16 @@
     {#snippet header()}
       <div class="header-row">
         <SectionHeader>Bot admins</SectionHeader>
-        <Button mode="plain" size="s">Add</Button>
+        <Button
+          mode="plain"
+          size="s"
+          onclick={() => navigateTo("add_admin", currentBot)}>Add</Button
+        >
       </div>
     {/snippet}
 
-    {#if bot?.admins && bot.admins.length > 0}
-      {#each bot.admins as admin, index}
+    {#if currentBot?.admins && currentBot.admins.length > 0}
+      {#each currentBot.admins as admin, index}
         <Cell>
           {#snippet before()}
             <Avatar
@@ -211,7 +249,7 @@
           {/snippet}
 
           {#snippet after()}
-            {#if bot?.userRole === "owner"}
+            {#if currentBot?.userRole === "owner"}
               <Button
                 mode="destructive"
                 size="s"
@@ -232,7 +270,7 @@
           {/snippet}
         </Cell>
 
-        {#if index < bot.admins.length - 1}
+        {#if index < currentBot.admins.length - 1}
           <Divider />
         {/if}
       {/each}
@@ -243,7 +281,7 @@
     {/if}
   </Section>
 
-  {#if bot?.userRole === "owner"}
+  {#if currentBot?.userRole === "owner"}
     <Section>
       <Accordion>
         <AccordionSummary>
@@ -266,7 +304,7 @@
 
           <Cell
             onclick={() => {
-              navigateTo("change_token", bot);
+              navigateTo("change_token", currentBot);
             }}
           >
             {#snippet before()}
@@ -300,7 +338,9 @@
 <style>
   .header--center-container {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
     padding: 16px 0;
   }
 

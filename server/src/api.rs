@@ -163,20 +163,15 @@ pub async fn get_bot_info(token: &str) -> Result<json::BotInfo> {
     Ok(json)
 }
 
-pub async fn get_user_info(token: &str, user_id: u64) -> Result<Option<json::UserInfoResult>> {
+pub async fn get_user_info(token: &str, user_id: u64) -> Result<json::UserInfo> {
     //getChat
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getChat?chat_id={}", tg_api_url, user_id)).unwrap();
 
     let res = integrations::http::get(&uri, None).await?;
-    let json: json::UserInfo = res.to_json()?;
+    let user_info: json::UserInfo = res.to_json()?;
 
-    if json.ok {
-        //good unwrap, check ok first
-        Ok(Some(json.result.unwrap()))
-    } else {
-        Ok(None)
-    }
+    Ok(user_info)
 }
 
 async fn get_user_profile_photos(token: &str, user_id: u64) -> Result<json::UserProfilePhotos> {

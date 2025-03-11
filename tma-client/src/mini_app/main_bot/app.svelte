@@ -10,6 +10,8 @@
   import PageEdit from "./page_edit.svelte";
   import PageCreate from "./page_create.svelte";
   import PageChangeToken from "./page_change_token.svelte";
+  import PageManageDonationButtons from "./page_manage_donation_buttons.svelte";
+  import PageAddAdmin from "./page_add_admin.svelte";
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -74,6 +76,10 @@
     <PageCreate {navigateTo} />
   {:else if currentPage === "change_token"}
     <PageChangeToken {navigateTo} bot={selectedBot} />
+  {:else if currentPage === "manage_donation_buttons"}
+    <PageManageDonationButtons {navigateTo} bot={selectedBot} />
+  {:else if currentPage === "add_admin"}
+    <PageAddAdmin {navigateTo} bot={selectedBot} />
   {/if}
 </div>
 
