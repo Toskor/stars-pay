@@ -4,6 +4,7 @@ export type Page =
   | "create"
   | "change_token"
   | "manage_donation_buttons"
+  | "preview_stream_bot"
   | "add_admin";
 
 export interface MainPageProps {

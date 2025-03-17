@@ -58,7 +58,7 @@ pub struct PreCheckoutQueryFrom {
 //docs https://core.telegram.org/bots/api#createinvoicelink
 #[derive(Deserialize, Debug)]
 pub struct CreateInvoiceQueryParam {
-    pub user_id: u32,
+    // pub user_id: u32,
     pub title: String,
     pub description: String,
     pub payload: String,

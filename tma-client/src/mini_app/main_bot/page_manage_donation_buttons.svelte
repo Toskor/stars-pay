@@ -107,6 +107,14 @@
 <List>
   <div class="layout-horizontal">
     <Title weight={1} level={3}>Manage Donation Buttons</Title>
+    <Button
+      mode="filled"
+      size="m"
+      onclick={() => navigateTo("preview_stream_bot", bot || undefined)}
+      style="margin-left: auto;"
+    >
+      Preview
+    </Button>
   </div>
 
   <Section header="Current Donation Buttons">

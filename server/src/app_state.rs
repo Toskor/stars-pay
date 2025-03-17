@@ -336,7 +336,6 @@ impl AppState {
         let is_owner = self
             .with_record(&bot_id, |db_bot| {
                 if db_bot.admins.contains(&user_id) {
-                    println!("User is already admin");
                     return Err(anyhow::anyhow!("User is already admin"));
                 }
 

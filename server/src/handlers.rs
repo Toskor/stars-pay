@@ -123,14 +123,14 @@ pub async fn create_invoice(
                 } else {
                     "user"
                 };
-                return Some((format!("https://api.telegram.org/bot{}/", bot.token), role));
+                return Some((bot.token.clone(), role));
             }
             None
         })
         .await;
 
     match security_check {
-        Ok(Some((tg_api_url, role))) => {
+        Ok(Some((token, role))) => {
             if role != "admin" {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -138,7 +138,7 @@ pub async fn create_invoice(
                 );
             }
 
-            match api::create_invoice_link(&tg_api_url, &payload).await {
+            match api::create_invoice_link(&token, &payload).await {
                 Ok(url) => {
                     return (
                         StatusCode::OK,

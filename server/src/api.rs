@@ -83,11 +83,12 @@ pub async fn set_bot_commands(tg_api_url: &str) -> Result<()> {
 
 //https://core.telegram.org/bots/api#createinvoicelink
 pub async fn create_invoice_link(
-    tg_api_url: &str,
+    token: &str,
     params: &json::CreateInvoiceQueryParam,
 ) -> Result<String> {
     //todo add photo_url URL of the product photo for the invoice. Can be a photo of the goods or a marketing image for a service.
     //the picture that user pick to show on stream
+    let tg_api_url = get_tg_api_url(&token);
     let body = serde_json::json!({
         "title": params.title,
         "description": params.description,
@@ -293,5 +294,19 @@ mod tests {
 
         let avatar_url = get_avatar_url(&token, user_id).await.unwrap();
         println!("avatar_url: {}", avatar_url.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_create_invoice_link() {
+        //bot star donatoin
+        let token = "7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs";
+        let payload = json::CreateInvoiceQueryParam {
+            title: "Test Donation".to_string(),
+            description: "Test Donation Description".to_string(),
+            payload: "Test Donation Payload".to_string(),
+            amount: 400,
+        };
+        let invoice_url = create_invoice_link(&token, &payload).await.unwrap();
+        println!("invoice_url: {}", invoice_url);
     }
 }

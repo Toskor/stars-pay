@@ -23,52 +23,11 @@
   let test_str: string = app_config_json;
 
   let isSettingsButtonEnabled = $state(false);
-  async function checkUserAccess() {
-    //todo remove initDataUnsafe.user.id is undef
-    setTimeout(() => {}, 100);
 
-    isSettingsButtonEnabled = app_config.admins.includes(
-      app.initDataUnsafe.user.id
-    );
-  }
-
-  let showSettings = $state(false);
-  function toggleSettings() {
-    showSettings = !showSettings;
-  }
-
-  onMount(() => {
-    app.expand();
-    checkUserAccess();
-    // isSettingsButtonEnabled = true;
-    console.log(app.initData);
-  });
 </script>
 
-<div class="fixed-header">
-  <span class="header-text">{app_config.header_text}</span>
-</div>
-
-<button
-  class="settings-button {isSettingsButtonEnabled ? '' : 'hidden'}"
-  onclick={toggleSettings}
->
-  <img
-    src="https://cdn-icons-png.flaticon.com/512/10233/10233697.png"
-    alt="Settings"
-  />
-</button>
-
-{#if showSettings}
-  <TelegramAppSettings
-    {app_config}
-    user_id={app.initDataUnsafe.user.id}
-    init_data={app.initData}
-  ></TelegramAppSettings>
-{/if}
 
 <div class="content">
-  <!-- {test_str} -->
   <span>{app_config.page_description}</span>
 
   <hr class="divider" />
