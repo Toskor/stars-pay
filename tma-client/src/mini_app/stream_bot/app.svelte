@@ -1,10 +1,39 @@
 <script lang="ts">
-  import { Card, CardCell, Image, Button, platform } from "telegram-ui";
+  import {
+    Card,
+    CardCell,
+    Image,
+    Button,
+    platform,
+    CardChip,
+    Title,
+    PremiumStarIcon,
+  } from "telegram-ui";
   import { preview_default, source_pool, type PreviewData } from "./types";
   import { onMount } from "svelte";
 
+  let { preview_data }: { preview_data?: PreviewData } = $props();
+
   let app_config_json = '{"json_to_replace":""}';
-  let preview_data = $state<PreviewData>(preview_default);
+
+  let data = $state<PreviewData>({
+    title: "Init title",
+    donation_buttons: [],
+  });
+
+  if (preview_data) {
+    data = preview_data;
+  } else {
+    try {
+      data = JSON.parse(app_config_json);
+    } catch {
+      console.error("Failed to parse app_config_json");
+      data = {
+        title: "Error preview",
+        donation_buttons: [],
+      };
+    }
+  }
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -17,9 +46,33 @@
     }
   }
 
+  function openInvoice(invoice_url: string) {
+    if (app) {
+      app.openInvoice(invoice_url, (status: string) => {
+        if (status === "paid") {
+          // animation "success donation"? telegram already shows that
+        }
+      });
+    }
+  }
+
   onMount(() => {
     if (app) {
       app.expand();
+
+      //main button
+      app.MainButton.isVisible = true;
+      app.MainButton.text = "Refresh";
+      app.MainButton.onClick(() => {
+        location.reload();
+      });
+
+      //secondary button
+      app.SecondaryButton.isVisible = true;
+      app.SecondaryButton.text = "Mini App Settings";
+      app.SecondaryButton.onClick(() => {
+        openMainBotMiniApp();
+      });
     }
 
     let isIOS = platform() === "ios";
@@ -30,21 +83,34 @@
       document.body.classList.add("wrapper-ios");
     }
 
-    return () => {
-      document.body.classList.remove("wrapper");
-      document.body.classList.remove("wrapper--horizontal-limit");
-      if (isIOS) {
-        document.body.classList.remove("wrapper-ios");
-      }
-    };
+    // return () => {
+    //   document.body.classList.remove("wrapper");
+    //   document.body.classList.remove("wrapper--horizontal-limit");
+    //   if (isIOS) {
+    //     document.body.classList.remove("wrapper-ios");
+    //   }
+    // };
   });
 </script>
 
+<Title weight={2} level={1}>
+  {data.title}
+</Title>
+
 <div class="horizontal-scroll">
-  {#each preview_data.donation_buttons as button}
+  {#each data.donation_buttons as button}
     <Card
       style="width: 254px; height: 308px; flex: 0 0 auto; margin-right: 12px;"
     >
+      <CardChip
+        onclick={() => {
+          openInvoice(button.invoice_url);
+        }}
+      >
+        {button.amount}
+        <PremiumStarIcon />
+      </CardChip>
+
       <Image
         alt={button.name}
         src={source_pool[button.source_id]}
@@ -53,13 +119,7 @@
       <CardCell
         onclick={() => {
           console.log("card clicked");
-          if (app) {
-            app.openInvoice(button.invoice_url, (status: string) => {
-              if (status === "paid") {
-                // animation "success donation"? telegram already shows that
-              }
-            });
-          }
+          openInvoice(button.invoice_url);
         }}
       >
         {button.name}
@@ -84,6 +144,13 @@
     padding: 8px 0;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+  }
+
+  :global {
+    .horizontal-scroll > * {
+      scroll-snap-align: start;
+    }
   }
 
   .horizontal-scroll::-webkit-scrollbar {

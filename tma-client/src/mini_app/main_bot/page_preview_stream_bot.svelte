@@ -4,12 +4,17 @@
   import { Button, Title, Text, Section } from "telegram-ui";
   import "telegram-ui/styles";
   import Preview from "../stream_bot/app.svelte";
+  import type { PreviewData } from "../stream_bot/types";
 
   let {
     navigateTo,
     bot,
-  }: { navigateTo: (page: Page, bot?: Bot) => void; bot: Bot | null } =
-    $props();
+    preview_data,
+  }: {
+    navigateTo: (page: Page, bot?: Bot) => void;
+    bot: Bot | null;
+    preview_data: PreviewData;
+  } = $props();
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -27,7 +32,7 @@
   });
 </script>
 
-<Preview />
+<Preview preview_data={bot?.preview_data} />
 
 <style>
 </style>

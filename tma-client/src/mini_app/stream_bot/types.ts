@@ -7,6 +7,7 @@ export const source_pool = [
 
 export type PreviewData = {
   title: string;
+
   donation_buttons: {
     name: string;
     description: string;
@@ -17,7 +18,7 @@ export type PreviewData = {
 };
 
 export const preview_default: PreviewData = {
-  title: "Header Text",
+  title: "Donate to me",
   donation_buttons: [
     {
       name: "Donate 1",

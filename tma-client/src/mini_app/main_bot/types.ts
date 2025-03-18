@@ -1,3 +1,5 @@
+import type { PreviewData } from "../stream_bot/types";
+
 export type Page =
   | "main"
   | "edit"
@@ -23,6 +25,8 @@ export interface Bot {
 
   suspended?: boolean;
   debt?: number;
+
+  preview_data?: PreviewData;
 }
 
 export type User = {

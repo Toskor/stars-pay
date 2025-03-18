@@ -18,6 +18,7 @@
   } from "telegram-ui";
   import { botsStore } from "./store";
   import "telegram-ui/styles";
+  import { preview_default } from "../stream_bot/types";
 
   let {
     navigateTo,
@@ -110,7 +111,12 @@
     <Button
       mode="filled"
       size="m"
-      onclick={() => navigateTo("preview_stream_bot", bot || undefined)}
+      onclick={() => {
+        if (bot) {
+          bot.preview_data = preview_default;
+          navigateTo("preview_stream_bot", bot || undefined);
+        }
+      }}
       style="margin-left: auto;"
     >
       Preview
