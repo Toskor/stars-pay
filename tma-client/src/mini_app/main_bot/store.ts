@@ -126,7 +126,10 @@ async function updateAllAvatars(initData: string): Promise<void> {
     await Promise.all(
       updatedData.bots.map(async (bot) => {
         try {
-          const botAvatar = await getAvatarAsObjectUrl(initData, bot.numeric_id.toString());
+          const botAvatar = await getAvatarAsObjectUrl(
+            initData,
+            bot.numeric_id.toString()
+          );
           if (botAvatar) {
             bot.avatar = botAvatar;
           }

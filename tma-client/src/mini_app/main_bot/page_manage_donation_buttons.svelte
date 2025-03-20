@@ -20,7 +20,11 @@
   } from "telegram-ui";
   import { botsStore } from "./store";
   import "telegram-ui/styles";
-  import { preview_default, type DonationButton } from "../stream_bot/types";
+  import {
+    preview_default,
+    type DonationButton,
+    source_pool,
+  } from "../stream_bot/types";
   import { getConfig, updateConfig } from "./queries";
 
   let {
@@ -37,10 +41,17 @@
   let newButtonLabel = $state("");
   let isAddingButton = $state(false);
   let errorMessage = $state<string | null>(null);
-  // Add a state variable to track if there are unsaved changes
+
   let hasChanges = $state(false);
-  // Add a state variable to track if the update is in progress
   let isUpdating = $state(false);
+
+  // Add button form state
+  let showAddForm = $state(false);
+  let name = $state("");
+  let description = $state("");
+  let amount = $state("");
+  let selectedSourceId = $state(0);
+  let isAdding = $state(false);
 
   onMount(() => {
     if (!bot) {
@@ -49,7 +60,11 @@
 
     if (app) {
       app.BackButton.onClick(() => {
-        navigateTo("edit", bot || undefined);
+        if (showAddForm) {
+          showAddForm = false;
+        } else {
+          navigateTo("edit", bot || undefined);
+        }
       });
 
       if (!preview_data) {
@@ -69,29 +84,27 @@
   });
 
   const handleAddButton = () => {
-    if (!preview_data) return;
-    if (isAddingButton) return;
+    if (!name.trim()) {
+      errorMessage = "Please enter a name for the donation button";
+      return;
+    }
 
-    // Validate inputs
-    // if (!newButtonAmount.trim() || isNaN(Number(newButtonAmount))) {
-    //   errorMessage = "Please enter a valid amount";
-    //   return;
-    // }
+    if (!amount.trim() || isNaN(Number(amount))) {
+      errorMessage = "Please enter a valid amount";
+      return;
+    }
 
-    // if (!newButtonLabel.trim()) {
-    //   errorMessage = "Please enter a button label";
-    //   return;
-    // }
-
-    isAddingButton = true;
+    isAdding = true;
     errorMessage = null;
+
+    if (!bot || !preview_data) return;
 
     const newButton: DonationButton = {
       id: preview_data.donation_buttons.length,
-      amount: 1000,
-      name: "New Donation Button",
-      description: "",
-      source_id: 0,
+      name: name.trim(),
+      description: description.trim(),
+      amount: Number(amount),
+      source_id: selectedSourceId,
       invoice_url: "",
     };
 
@@ -100,22 +113,17 @@
       newButton,
     ];
 
-    // Reset form
-    newButtonAmount = "";
-    newButtonLabel = "";
-    isAddingButton = false;
+    // Reset form fields
+    name = "";
+    description = "";
+    amount = "";
+    selectedSourceId = 0;
+    isAdding = false;
 
-    // Mark as changed
+    // Hide the form
+    showAddForm = false;
+
     hasChanges = true;
-
-    // Show success message
-    if (app) {
-      app.showPopup({
-        title: "Success",
-        message: "Donation button added successfully!",
-        buttons: [{ type: "ok" }],
-      });
-    }
   };
 
   const handleDeleteButton = (id: number) => {
@@ -130,7 +138,6 @@
 
     bot!.preview_data = preview_data;
 
-    // Mark as changed
     hasChanges = true;
   };
 
@@ -162,81 +169,161 @@
 
 <List>
   <div class="layout-horizontal">
-    <Title weight={1} level={3}>Manage Donation Buttons</Title>
+    <Title weight={1} level={3}
+      >{showAddForm ? "Add Donation Button" : "Manage Donation Buttons"}</Title
+    >
   </div>
 
-  <Button
-    mode="filled"
-    size="m"
-    onclick={() => {
-      if (bot) {
-        bot.preview_data = preview_data;
-        navigateTo("preview_stream_bot", bot);
-      }
-    }}
-  >
-    Preview
-  </Button>
+  {#if !showAddForm}
+    <Button
+      mode="filled"
+      size="m"
+      onclick={() => {
+        if (bot) {
+          bot.preview_data = preview_data;
+          navigateTo("preview_stream_bot", bot);
+        }
+      }}
+    >
+      Preview
+    </Button>
 
-  <Button
-    mode="filled"
-    size="m"
-    onclick={handleUpdateConfig}
-    loading={isUpdating}
-    disabled={!hasChanges}
-  >
-    Confirm
-  </Button>
+    <Button
+      mode="filled"
+      size="m"
+      onclick={handleUpdateConfig}
+      loading={isUpdating}
+      disabled={!hasChanges}
+    >
+      Confirm
+    </Button>
 
-  <Section>
-    {#snippet header()}
-      <div class="header-row">
-        <SectionHeader>Current Donation Buttons</SectionHeader>
-        <Button mode="plain" size="s" onclick={handleAddButton}>Add</Button>
-      </div>
-    {/snippet}
-    <List>
-      {#if preview_data && preview_data.donation_buttons.length > 0}
-        {#each preview_data.donation_buttons as button (button.id)}
+    <Section>
+      {#snippet header()}
+        <div class="header-row">
+          <SectionHeader>Current Donation Buttons</SectionHeader>
+          <Button
+            mode="plain"
+            size="s"
+            onclick={() => {
+              showAddForm = true;
+            }}>Add</Button
+          >
+        </div>
+      {/snippet}
+      <List>
+        {#if preview_data && preview_data.donation_buttons.length > 0}
+          {#each preview_data.donation_buttons as button (button.id)}
+            <Cell>
+              {button.name}
+
+              {#snippet subhead()}
+                {button.amount}
+                <PremiumStarIcon />
+              {/snippet}
+
+              {#snippet after()}
+                <Button
+                  mode="destructive"
+                  size="s"
+                  onclick={() => handleDeleteButton(button.id)}
+                >
+                  <DeleteIcon />
+                </Button>
+              {/snippet}
+            </Cell>
+
+            {#if button !== preview_data.donation_buttons[preview_data.donation_buttons.length - 1]}
+              <Divider />
+            {/if}
+          {/each}
+        {:else}
           <Cell>
-            {button.name}
-            
-            {#snippet subhead()}
-              {button.amount}
-              <PremiumStarIcon />
-            {/snippet}
-
-            {#snippet after()}
-              <Button
-                mode="destructive"
-                size="s"
-                onclick={() => handleDeleteButton(button.id)}
-              >
-                <DeleteIcon />
-              </Button>
-            {/snippet}
+            <div class="no-buttons">No donation buttons added yet</div>
           </Cell>
+        {/if}
+      </List>
+    </Section>
 
-          {#if button !== preview_data.donation_buttons[preview_data.donation_buttons.length - 1]}
-            <Divider />
-          {/if}
-        {/each}
-      {:else}
-        <Cell>
-          <div class="no-buttons">No donation buttons added yet</div>
-        </Cell>
+    <SectionFooter centered={false}>
+      <Text>
+        Donation buttons allow your users to support your bot with predefined
+        amounts.
+        <br />
+        You can add up to 10 donation buttons with different amounts and labels.
+      </Text>
+    </SectionFooter>
+  {:else}
+    <!-- Add Donation Button Form -->
+    <Section>
+      <SectionHeader>Button Information</SectionHeader>
+
+      {#if errorMessage}
+        <div class="error-message">{errorMessage}</div>
       {/if}
-    </List>
-  </Section>
 
-  <SectionFooter centered={false}>
-    <Text>
-      Donation buttons allow your users to support your bot with predefined
-      amounts.
-      <br />
-      You can add up to 10 donation buttons with different amounts and labels.
-    </Text>
-  </SectionFooter>
+      <div class="form-group">
+        <Input placeholder="Name" bind:value={name} header="Name" />
+
+        <Input
+          placeholder="Description (optional)"
+          bind:value={description}
+          header="Description"
+        />
+
+        <Input placeholder="Amount" bind:value={amount} header="Amount" />
+      </div>
+    </Section>
+
+    <Section>
+      <SectionHeader>Select Source</SectionHeader>
+      <div class="image-selector">
+        {#each source_pool as source, index}
+          <div
+            class="image-option"
+            class:selected={selectedSourceId === index}
+            onclick={() => (selectedSourceId = index)}
+          >
+            <Image src={source} size={48} />
+            <div
+              class="radio-circle"
+              class:selected={selectedSourceId === index}
+            ></div>
+          </div>
+        {/each}
+      </div>
+    </Section>
+
+    <div class="button-group">
+      <Button
+        mode="filled"
+        size="m"
+        stretched={true}
+        onclick={handleAddButton}
+        loading={isAdding}
+      >
+        Add Button
+      </Button>
+      <Button
+        mode="plain"
+        size="m"
+        stretched={true}
+        onclick={() => {
+          showAddForm = false;
+          errorMessage = null;
+        }}
+      >
+        Cancel
+      </Button>
+    </div>
+
+    <SectionFooter centered={false}>
+      <Text>
+        Configure your donation button with a name, description, amount, and
+        select an image.
+      </Text>
+    </SectionFooter>
+  {/if}
 </List>
 
 <style>
@@ -251,5 +338,71 @@
     color: var(--tgui--secondary_hint_color);
     text-align: center;
     padding: 8px 0;
+  }
+
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .error-message {
+    color: var(--tgui--destructive_text_color);
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+
+  .image-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 8px;
+  }
+
+  .image-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 8px;
+  }
+
+  .image-option.selected {
+    background-color: var(--tgui--secondary_bg_color);
+  }
+
+  .radio-circle {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--tgui--secondary_hint_color);
+  }
+
+  .radio-circle.selected {
+    border-color: var(--tgui--button_color);
+    background-color: var(--tgui--button_color);
+    position: relative;
+  }
+
+  .radio-circle.selected::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .button-group {
+    margin: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 </style>
