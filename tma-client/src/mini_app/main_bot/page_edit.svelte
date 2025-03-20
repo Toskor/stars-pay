@@ -25,7 +25,7 @@
   let {
     navigateTo,
     bot,
-  }: { navigateTo: (page: Page, bot?: Bot) => void; bot: Bot | null } =
+  }: { navigateTo: (page: Page, bot?: Bot) => void; bot: Bot | undefined } =
     $props();
 
   let platform = $state<"ios" | "base">("ios");

@@ -203,13 +203,15 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn get_bot_config(&self, bot_id: String) -> Result<String> {
+        self.db.get_bot_config(bot_id).await
+    }
+
     pub async fn update_bot_config(&self, bot_id: String, app_config: String) -> Result<()> {
         self.update_mini_app_source_with_config(&bot_id, &app_config)
             .await?;
 
-        self.db
-            .update_bot_config(bot_id.to_string(), app_config.to_string())
-            .await?;
+        self.db.update_bot_config(bot_id, app_config).await?;
 
         Ok(())
     }

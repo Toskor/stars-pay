@@ -19,7 +19,7 @@
 
   let currentPage: Page = $state("main");
   let isAppLoading = $state(true);
-  let selectedBot: Bot | null = $state(null);
+  let selectedBot: Bot | undefined = $state(undefined);
 
   function navigateTo(page: Page, bot?: Bot) {
     currentPage = page;

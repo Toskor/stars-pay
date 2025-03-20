@@ -10,7 +10,7 @@
     PremiumStarIcon,
   } from "telegram-ui";
   import { preview_default, source_pool, type PreviewData } from "./types";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
 
   let { preview_data }: { preview_data?: PreviewData } = $props();
 
@@ -25,11 +25,11 @@
     data = preview_data;
   } else {
     try {
-      data = JSON.parse(app_config_json);
+      data = JSON.parse(app_config_json) as PreviewData;
     } catch {
       console.error("Failed to parse app_config_json");
       data = {
-        title: "Error preview",
+        title: "Error pre view",
         donation_buttons: [],
       };
     }
@@ -59,6 +59,8 @@
   onMount(() => {
     if (app) {
       app.expand();
+
+      console.log("stream bot app data", data);
 
       //main button
       app.MainButton.isVisible = true;
@@ -90,6 +92,13 @@
     //     document.body.classList.remove("wrapper-ios");
     //   }
     // };
+  });
+
+  onDestroy(() => {
+    if (app) {
+      app.MainButton.isVisible = false;
+      app.SecondaryButton.isVisible = false;
+    }
   });
 </script>
 

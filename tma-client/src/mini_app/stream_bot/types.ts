@@ -7,20 +7,23 @@ export const source_pool = [
 
 export type PreviewData = {
   title: string;
+  donation_buttons: DonationButton[];
+};
 
-  donation_buttons: {
-    name: string;
-    description: string;
-    amount: number;
-    source_id: number;
-    invoice_url: string;
-  }[];
+export type DonationButton = {
+  id: number;
+  name: string;
+  description: string;
+  amount: number;
+  source_id: number;
+  invoice_url: string;
 };
 
 export const preview_default: PreviewData = {
   title: "Donate to me",
   donation_buttons: [
     {
+      id: 0,
       name: "Donate 1",
       description: "Description 1",
       amount: 100,
@@ -28,6 +31,7 @@ export const preview_default: PreviewData = {
       invoice_url: "https://t.me/$clgGxe0mwEq9CwAAvJUBv--iitU",
     },
     {
+      id: 1,
       name: "Donate 2",
       description: "Description 2",
       amount: 200,
@@ -35,6 +39,7 @@ export const preview_default: PreviewData = {
       invoice_url: "https://t.me/$pHcweO0mwEq-CwAATVxs8DbroT0",
     },
     {
+      id: 2,
       name: "Donate 3",
       description: "Description 3",
       amount: 300,
@@ -42,6 +47,7 @@ export const preview_default: PreviewData = {
       invoice_url: "https://t.me/$HYySbu0mwErACwAA5Pxvbym2xzw",
     },
     {
+      id: 3,
       name: "Donate 4",
       description: "Description 4",
       amount: 400,

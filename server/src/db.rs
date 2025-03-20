@@ -384,7 +384,12 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn change_bot_token(&self, user_id: u64, bot_id: String, new_token: String) -> Result<()> {
+    pub async fn change_bot_token(
+        &self,
+        user_id: u64,
+        bot_id: String,
+        new_token: String,
+    ) -> Result<()> {
         let conn = &self.conn;
 
         // First, check if the user is the owner of the bot
@@ -443,6 +448,26 @@ mod tests {
             .await
             .unwrap();
         db.add_bot_admin(bot_id.to_string(), admin_id_2)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn set_new_db_app_config() {
+        let preview_default_config = r#"{"title":"Donate to me","donation_buttons":[{"name":"Donate 1","description":"Description 1","amount":100,"source_id":0,"invoice_url":"https://t.me/$clgGxe0mwEq9CwAAvJUBv--iitU"},{"name":"Donate 2","description":"Description 2","amount":200,"source_id":1,"invoice_url":"https://t.me/$pHcweO0mwEq-CwAATVxs8DbroT0"},{"name":"Donate 3","description":"Description 3","amount":300,"source_id":2,"invoice_url":"https://t.me/$HYySbu0mwErACwAA5Pxvbym2xzw"},{"name":"Donate 4","description":"Description 4","amount":400,"source_id":3,"invoice_url":"https://t.me/$RJw1Ye0mwErBCwAA2omxPGrT2II"}]}"#;
+        let db = DataBase::new_sql_lite("../db/bots_data_base.sqlite")
+            .await
+            .expect("Failed to create database");
+
+        db.update_bot_config("second_test_1".to_string(), preview_default_config.to_string())
+            .await
+            .unwrap();
+
+        db.update_bot_config("star_donation".to_string(), preview_default_config.to_string())
+            .await
+            .unwrap();
+
+        db.update_bot_config("just_for_test75w67".to_string(), preview_default_config.to_string())
             .await
             .unwrap();
     }

@@ -110,6 +110,7 @@ pub struct UserInfoResult {
 #[derive(Deserialize)]
 pub struct UpdateConfigQueryParam {
     pub app_config: String,
+    pub target_bot_id: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -219,6 +220,11 @@ pub struct FileResult {
     pub file_unique_id: String,
     pub file_size: Option<u32>,
     pub file_path: String,
+}
+
+#[derive(Deserialize)]
+pub struct ConfigQueryParam {
+    pub target_bot_id: String,
 }
 
 #[cfg(test)]

@@ -9,11 +9,9 @@
   let {
     navigateTo,
     bot,
-    preview_data,
   }: {
     navigateTo: (page: Page, bot?: Bot) => void;
-    bot: Bot | null;
-    preview_data: PreviewData;
+    bot: Bot | undefined;
   } = $props();
 
   //@ts-ignore
@@ -24,6 +22,8 @@
       navigateTo("main");
     }
 
+    console.log("bot prev data", bot?.preview_data);
+
     if (app) {
       app.BackButton.onClick(() => {
         navigateTo("manage_donation_buttons", bot || undefined);
@@ -32,7 +32,7 @@
   });
 </script>
 
-<Preview preview_data={bot?.preview_data} />
+<Preview preview_data={bot!.preview_data} />
 
 <style>
 </style>

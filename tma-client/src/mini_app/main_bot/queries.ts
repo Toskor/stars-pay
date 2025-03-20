@@ -1,3 +1,4 @@
+import type { PreviewData } from "../stream_bot/types";
 import type { MainPageProps, Bot, User } from "./types";
 
 type ApiResponse<T> =
@@ -12,17 +13,23 @@ type ApiResponse<T> =
 
 class ApiClient {
   private baseUrl: string;
+  private mainBotId: string;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, defaultBotId: string) {
     this.baseUrl = baseUrl;
+    this.mainBotId = defaultBotId;
   }
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    botId?: string
   ): Promise<ApiResponse<T>> {
+    const targetBotId = botId || this.mainBotId;
+    const requestUrl = `${this.baseUrl}/${targetBotId}${endpoint}`;
+
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const response = await fetch(requestUrl, {
         ...options,
         headers: {
           "Content-Type": "application/json;charset=utf-8",
@@ -41,7 +48,7 @@ class ApiClient {
         };
       }
 
-      const data = await response.json();
+      const data: T = await response.json();
       return {
         success: true,
         data,
@@ -87,8 +94,6 @@ class ApiClient {
         method: "GET",
         headers: {
           "X-Telegram-InitData": initData,
-          //todo remove
-          "ngrok-skip-browser-warning": "",
         },
       });
 
@@ -174,10 +179,38 @@ class ApiClient {
       body: JSON.stringify({ bot_id: botId, admin_id: adminId }),
     });
   }
+
+  async getConfig(
+    initData: string,
+    bot_id: string
+  ): Promise<ApiResponse<PreviewData>> {
+    return this.request<PreviewData>("/config", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ target_bot_id: bot_id }),
+    });
+  }
+
+  async updateConfig(
+    initData: string,
+    bot_id: string,
+    config: string
+  ): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/updateConfig", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ target_bot_id: bot_id, app_config: config }),
+    });
+  }
 }
 
 const api = new ApiClient(
-  "https://advanced-oddly-herring.ngrok-free.app/stardonationservice"
+  "https://advanced-oddly-herring.ngrok-free.app",
+  "stardonationservice"
 );
 
 export const getControlledBots = api.getControlledBots.bind(api);
@@ -187,3 +220,5 @@ export const removeBotAdmin = api.removeBotAdmin.bind(api);
 export const removeBot = api.removeBot.bind(api);
 export const changeBotToken = api.changeBotToken.bind(api);
 export const addBot = api.addBot.bind(api);
+export const getConfig = api.getConfig.bind(api);
+export const updateConfig = api.updateConfig.bind(api);

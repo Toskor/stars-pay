@@ -25,37 +25,39 @@ use crate::{
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
-// pub async fn user_check(
-//     headers: HeaderMap,
-//     Path(bot_id): Path<String>,
-//     State(state): State<Arc<AppState>>,
-// ) -> impl IntoResponse {
-//     let role = state
-//         .with_record(&bot_id, |bot| {
-//             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
-//                 let role = if bot.admins.contains(&user.id) {
-//                     "admin"
-//                 } else {
-//                     "user"
-//                 };
-//                 return Some(role);
-//             }
-//             None
-//         })
-//         .await;
+pub async fn config_handler(
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::ConfigQueryParam>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(&bot_id, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                if user.id == bot.owner || bot.admins.contains(&user.id) {
+                    return Some(());
+                }
+            }
+            None
+        })
+        .await;
 
-//     match role {
-//         Ok(Some(role)) => (StatusCode::OK, Json(serde_json::json!({"role": role}))),
-//         Ok(None) => (
-//             StatusCode::BAD_REQUEST,
-//             Json(serde_json::json!({"error": "security check failure"})),
-//         ),
-//         Err(e) => (
-//             StatusCode::BAD_REQUEST,
-//             Json(serde_json::json!({"error": e.to_string()})),
-//         ),
-//     }
-// }
+    match security_check {
+        Ok(Some(_)) => {
+            let config = state.get_bot_config(payload.target_bot_id).await.unwrap();
+            let json_config: Value = serde_json::from_str(&config).unwrap();
+            (StatusCode::OK, Json(json_config))
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
 
 pub async fn update_config(
     headers: HeaderMap,
@@ -63,32 +65,22 @@ pub async fn update_config(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::UpdateConfigQueryParam>,
 ) -> impl IntoResponse {
-    println!("update_config: {}", payload.app_config);
-
     let security_check = state
         .with_record(&bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
-                let role = if bot.admins.contains(&user.id) {
-                    "admin"
-                } else {
-                    "user"
-                };
-                return Some(role);
+                if user.id == bot.owner || bot.admins.contains(&user.id) {
+                    return Some(());
+                }
             }
             None
         })
         .await;
 
     match security_check {
-        Ok(Some(role)) => {
-            if role != "admin" {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "Inappropriate user role"})),
-                );
-            }
-
-            let upd_res = state.update_bot_config(bot_id, payload.app_config).await;
+        Ok(Some(_)) => {
+            let upd_res = state
+                .update_bot_config(payload.target_bot_id, payload.app_config)
+                .await;
             match upd_res {
                 Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
                 Err(err) => (
@@ -101,9 +93,9 @@ pub async fn update_config(
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "security check failure"})),
         ),
-        Err(err) => (
+        Err(e) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": err.to_string()})),
+            Json(serde_json::json!({"error": e.to_string()})),
         ),
     }
 }

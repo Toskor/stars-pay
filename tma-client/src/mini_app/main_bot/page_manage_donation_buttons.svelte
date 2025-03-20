@@ -15,35 +15,34 @@
     List,
     Cell,
     DeleteIcon,
+    SectionHeader,
+    PremiumStarIcon,
   } from "telegram-ui";
   import { botsStore } from "./store";
   import "telegram-ui/styles";
-  import { preview_default } from "../stream_bot/types";
+  import { preview_default, type DonationButton } from "../stream_bot/types";
+  import { getConfig, updateConfig } from "./queries";
 
   let {
     navigateTo,
     bot,
-  }: { navigateTo: (page: Page, bot?: Bot) => void; bot: Bot | null } =
+  }: { navigateTo: (page: Page, bot?: Bot) => void; bot: Bot | undefined } =
     $props();
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
 
-  // Sample donation buttons data - in a real app, this would come from an API
-  let donationButtons = $state([
-    { id: 1, amount: 5, currency: "USD", label: "Coffee" },
-    { id: 2, amount: 10, currency: "USD", label: "Lunch" },
-    { id: 3, amount: 20, currency: "USD", label: "Support" },
-  ]);
-
+  let preview_data = $state(bot?.preview_data);
   let newButtonAmount = $state("");
   let newButtonLabel = $state("");
-  let newButtonCurrency = $state("USD");
   let isAddingButton = $state(false);
   let errorMessage = $state<string | null>(null);
+  // Add a state variable to track if there are unsaved changes
+  let hasChanges = $state(false);
+  // Add a state variable to track if the update is in progress
+  let isUpdating = $state(false);
 
   onMount(() => {
-    console.log("manage donation buttons", bot);
     if (!bot) {
       navigateTo("main");
     }
@@ -52,84 +51,156 @@
       app.BackButton.onClick(() => {
         navigateTo("edit", bot || undefined);
       });
+
+      if (!preview_data) {
+        //todo query for preview data
+        getConfig(app.initData, bot!.id).then((res) => {
+          if (res.success) {
+            res.data.donation_buttons.forEach((button, ind) => {
+              button.id = ind;
+            });
+            preview_data = res.data;
+          } else {
+            console.log("error", res.error);
+          }
+        });
+      }
     }
   });
 
   const handleAddButton = () => {
+    if (!preview_data) return;
     if (isAddingButton) return;
 
     // Validate inputs
-    if (!newButtonAmount.trim() || isNaN(Number(newButtonAmount))) {
-      errorMessage = "Please enter a valid amount";
-      return;
-    }
+    // if (!newButtonAmount.trim() || isNaN(Number(newButtonAmount))) {
+    //   errorMessage = "Please enter a valid amount";
+    //   return;
+    // }
 
-    if (!newButtonLabel.trim()) {
-      errorMessage = "Please enter a button label";
-      return;
-    }
+    // if (!newButtonLabel.trim()) {
+    //   errorMessage = "Please enter a button label";
+    //   return;
+    // }
 
     isAddingButton = true;
     errorMessage = null;
 
-    // In a real app, this would be an API call
-    setTimeout(() => {
-      // Add new button to the list
-      const newButton = {
-        id: Date.now(), // Generate a unique ID
-        amount: Number(newButtonAmount),
-        currency: newButtonCurrency,
-        label: newButtonLabel,
-      };
+    const newButton: DonationButton = {
+      id: preview_data.donation_buttons.length,
+      amount: 1000,
+      name: "New Donation Button",
+      description: "",
+      source_id: 0,
+      invoice_url: "",
+    };
 
-      donationButtons = [...donationButtons, newButton];
+    preview_data.donation_buttons = [
+      ...preview_data.donation_buttons,
+      newButton,
+    ];
 
-      // Reset form
-      newButtonAmount = "";
-      newButtonLabel = "";
-      isAddingButton = false;
+    // Reset form
+    newButtonAmount = "";
+    newButtonLabel = "";
+    isAddingButton = false;
 
-      // Show success message
-      if (app) {
-        app.showPopup({
-          title: "Success",
-          message: "Donation button added successfully!",
-          buttons: [{ type: "ok" }],
-        });
-      }
-    }, 500);
+    // Mark as changed
+    hasChanges = true;
+
+    // Show success message
+    if (app) {
+      app.showPopup({
+        title: "Success",
+        message: "Donation button added successfully!",
+        buttons: [{ type: "ok" }],
+      });
+    }
   };
 
   const handleDeleteButton = (id: number) => {
-    donationButtons = donationButtons.filter((button) => button.id !== id);
+    if (!preview_data) return;
+    preview_data.donation_buttons = preview_data.donation_buttons.filter(
+      (button) => button.id !== id
+    );
+
+    preview_data.donation_buttons.forEach((button, index) => {
+      button.id = index;
+    });
+
+    bot!.preview_data = preview_data;
+
+    // Mark as changed
+    hasChanges = true;
+  };
+
+  const handleUpdateConfig = () => {
+    isUpdating = true;
+    bot!.preview_data = preview_data;
+
+    if (app) {
+      updateConfig(app.initData, bot!.id, JSON.stringify(preview_data)).then(
+        (res) => {
+          isUpdating = false;
+          hasChanges = false;
+
+          if (res.success) {
+            app.showPopup({
+              title: "Success",
+              message: "Donation buttons updated successfully!",
+              buttons: [{ type: "ok" }],
+            });
+          } else {
+            //todo show error
+            console.log("error", res.error);
+          }
+        }
+      );
+    }
   };
 </script>
 
 <List>
   <div class="layout-horizontal">
     <Title weight={1} level={3}>Manage Donation Buttons</Title>
-    <Button
-      mode="filled"
-      size="m"
-      onclick={() => {
-        if (bot) {
-          bot.preview_data = preview_default;
-          navigateTo("preview_stream_bot", bot || undefined);
-        }
-      }}
-      style="margin-left: auto;"
-    >
-      Preview
-    </Button>
   </div>
 
-  <Section header="Current Donation Buttons">
+  <Button
+    mode="filled"
+    size="m"
+    onclick={() => {
+      if (bot) {
+        bot.preview_data = preview_data;
+        navigateTo("preview_stream_bot", bot);
+      }
+    }}
+  >
+    Preview
+  </Button>
+
+  <Button
+    mode="filled"
+    size="m"
+    onclick={handleUpdateConfig}
+    loading={isUpdating}
+    disabled={!hasChanges}
+  >
+    Confirm
+  </Button>
+
+  <Section>
+    {#snippet header()}
+      <div class="header-row">
+        <SectionHeader>Current Donation Buttons</SectionHeader>
+        <Button mode="plain" size="s" onclick={handleAddButton}>Add</Button>
+      </div>
+    {/snippet}
     <List>
-      {#if donationButtons.length > 0}
-        {#each donationButtons as button}
+      {#if preview_data && preview_data.donation_buttons.length > 0}
+        {#each preview_data.donation_buttons as button (button.id)}
           <Cell>
-            {button.label} - {button.amount}
-            {button.currency}
+            {button.name} - {button.amount}
+            <PremiumStarIcon />
 
             {#snippet after()}
               <Button
@@ -142,7 +213,7 @@
             {/snippet}
           </Cell>
 
-          {#if button !== donationButtons[donationButtons.length - 1]}
+          {#if button !== preview_data.donation_buttons[preview_data.donation_buttons.length - 1]}
             <Divider />
           {/if}
         {/each}

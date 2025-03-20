@@ -44,8 +44,6 @@ export async function loadBotsData(initData: string): Promise<void> {
         loadTime,
       });
 
-      console.log("data", result.data);
-
       await updateAllAvatars(initData);
     } else {
       botsStore.update((store) => ({
@@ -128,11 +126,9 @@ async function updateAllAvatars(initData: string): Promise<void> {
     await Promise.all(
       updatedData.bots.map(async (bot) => {
         try {
-          console.log("bot.id", bot.id);
           const botAvatar = await getAvatarAsObjectUrl(initData, bot.numeric_id.toString());
           if (botAvatar) {
             bot.avatar = botAvatar;
-            console.log("bot.avatar ",bot.id, bot.avatar);
           }
 
           if (bot.owner && bot.owner.id) {
@@ -181,7 +177,6 @@ export async function getAvatarAsObjectUrl(
   initData: string,
   userId: string
 ): Promise<string | null> {
-  console.log("getAvatarAsObjectUrl", userId);
   try {
     const blob = await getAvatar(initData, userId);
 
