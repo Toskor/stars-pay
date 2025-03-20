@@ -199,8 +199,12 @@
       {#if preview_data && preview_data.donation_buttons.length > 0}
         {#each preview_data.donation_buttons as button (button.id)}
           <Cell>
-            {button.name} - {button.amount}
-            <PremiumStarIcon />
+            {button.name}
+            
+            {#snippet subhead()}
+              {button.amount}
+              <PremiumStarIcon />
+            {/snippet}
 
             {#snippet after()}
               <Button

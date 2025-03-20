@@ -78,8 +78,19 @@ pub async fn update_config(
 
     match security_check {
         Ok(Some(_)) => {
+            let target_bot_token = state
+                .get_bot_token(payload.target_bot_id.to_string())
+                .await
+                .unwrap();
+            let mut tma_app_config: json::TMAAppConfig =
+                serde_json::from_str(&payload.app_config).unwrap();
+            generate_invoice_urls(&mut tma_app_config, &target_bot_token).await;
+
             let upd_res = state
-                .update_bot_config(payload.target_bot_id, payload.app_config)
+                .update_bot_config(
+                    payload.target_bot_id,
+                    serde_json::to_string(&tma_app_config).unwrap(),
+                )
                 .await;
             match upd_res {
                 Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
@@ -97,6 +108,43 @@ pub async fn update_config(
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
         ),
+    }
+}
+
+async fn generate_invoice_urls(tma_app_config: &mut json::TMAAppConfig, token: &str) {
+    use tokio::task::{self, JoinHandle};
+
+    let mut tasks: Vec<(usize, JoinHandle<Result<String>>)> = Vec::new();
+
+    for (index, button) in tma_app_config.donation_buttons.iter().enumerate() {
+        if button.invoice_url.is_empty() {
+            let token = token.to_string();
+            let name = button.name.clone();
+            let description = button.description.clone();
+            let amount = button.amount;
+
+            let task = task::spawn(async move {
+                api::create_invoice_link(
+                    &token,
+                    &json::CreateInvoiceQueryParam {
+                        title: name.clone(),
+                        description,
+                        payload: name,
+                        amount,
+                    },
+                )
+                .await
+            });
+
+            tasks.push((index, task));
+        }
+    }
+
+    // Обрабатываем результаты задач
+    for (index, task) in tasks {
+        if let Ok(Ok(url)) = task.await {
+            tma_app_config.donation_buttons[index].invoice_url = url;
+        }
     }
 }
 

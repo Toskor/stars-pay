@@ -207,6 +207,10 @@ impl AppState {
         self.db.get_bot_config(bot_id).await
     }
 
+    pub async fn get_bot_token(&self, bot_id: String) -> Result<String> {
+        self.db.get_bot_token(bot_id).await
+    }
+
     pub async fn update_bot_config(&self, bot_id: String, app_config: String) -> Result<()> {
         self.update_mini_app_source_with_config(&bot_id, &app_config)
             .await?;

@@ -227,6 +227,21 @@ pub struct ConfigQueryParam {
     pub target_bot_id: String,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct TMAAppConfig {
+    pub donation_buttons: Vec<DonationButton>,
+    pub title: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct DonationButton {
+    pub name: String,
+    pub description: String,
+    pub amount: u32,
+    pub source_id: u32,
+    pub invoice_url: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

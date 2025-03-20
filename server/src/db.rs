@@ -307,6 +307,20 @@ impl DataBase {
         Ok(app_config)
     }
 
+    pub async fn get_bot_token(&self, bot_id: String) -> Result<String> {
+        let conn = &self.conn;
+        let token = conn
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT token FROM bots WHERE id = :id",
+                    named_params! { ":id": &bot_id },
+                    |row| row.get(0),
+                )
+            })
+            .await?;
+        Ok(token)
+    }
+
     pub async fn add_bot_admin(&self, bot_id: String, admin_id: u64) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {

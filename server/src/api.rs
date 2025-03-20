@@ -89,9 +89,16 @@ pub async fn create_invoice_link(
     //todo add photo_url URL of the product photo for the invoice. Can be a photo of the goods or a marketing image for a service.
     //the picture that user pick to show on stream
     let tg_api_url = get_tg_api_url(&token);
+
+    let description = if params.description.is_empty() {
+        params.title.to_string()
+    } else {
+        params.description.to_string()
+    };
+
     let body = serde_json::json!({
         "title": params.title,
-        "description": params.description,
+        "description": description,
         "payload": params.payload,
         "provider_token": "",
         "currency": "XTR",

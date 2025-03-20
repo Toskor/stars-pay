@@ -21,7 +21,10 @@
     donation_buttons: [],
   });
 
+  let isPreview = $state(false);
+
   if (preview_data) {
+    isPreview = true;
     data = preview_data;
   } else {
     try {
@@ -47,7 +50,7 @@
   }
 
   function openInvoice(invoice_url: string) {
-    if (app) {
+    if (app && !isPreview) {
       app.openInvoice(invoice_url, (status: string) => {
         if (status === "paid") {
           // animation "success donation"? telegram already shows that
