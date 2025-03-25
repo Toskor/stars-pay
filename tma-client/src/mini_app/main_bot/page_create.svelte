@@ -97,54 +97,56 @@
           .then((res) => {
             isLoading = false;
 
-          if (res.success && res.data && res.data.bot_data) {
-            const newBot: Bot = {
-              id: res.data.bot_data.id,
-              numeric_id: res.data.bot_data.numeric_id,
-              name: res.data.bot_data.name,
-              avatar: res.data.bot_data.avatar || "",
-              userRole: res.data.bot_data.userRole,
-              owner: res.data.bot_data.owner,
-              admins: res.data.bot_data.admins || [],
-            };
+            if (res.success && res.data && res.data.bot_data) {
+              const newBot: Bot = {
+                id: res.data.bot_data.id,
+                numeric_id: res.data.bot_data.numeric_id,
+                name: res.data.bot_data.name,
+                avatar: res.data.bot_data.avatar || "",
+                userRole: res.data.bot_data.userRole,
+                owner: res.data.bot_data.owner,
+                admins: res.data.bot_data.admins || [],
+              };
 
-            botsStore.update((store) => {
-              if (!store.data) {
+              botsStore.update((store) => {
+                if (!store.data) {
+                  return {
+                    ...store,
+                    isLoaded: true,
+                    isLoading: false,
+                    error: null,
+                    data: {
+                      bots: [newBot],
+                    },
+                    loadTime: performance.now(),
+                  };
+                }
+
                 return {
                   ...store,
-                  isLoaded: true,
-                  isLoading: false,
-                  error: null,
-                  data: { bots: [newBot] },
-                  loadTime: performance.now(),
+                  data: {
+                    ...store.data,
+                    bots: [...store.data.bots, newBot],
+                  },
                 };
-              }
+              });
 
-              return {
-                ...store,
-                data: {
-                  ...store.data,
-                  bots: [...store.data.bots, newBot],
-                },
-              };
-            });
+              app.showPopup({
+                title: "Success",
+                message: "Bot successfully registered!",
+                buttons: [{ type: "ok" }],
+              });
 
-            app.showPopup({
-              title: "Success",
-              message: "Bot successfully registered!",
-              buttons: [{ type: "ok" }],
-            });
-
-            navigateTo("main");
-          } else {
-            errorMessage =
-              res.success === false
-                ? JSON.parse(res.error).error
-                : "Failed to register bot";
-          }
-        })
-        .catch((err) => {
-          isLoading = false;
+              navigateTo("main");
+            } else {
+              errorMessage =
+                res.success === false
+                  ? JSON.parse(res.error).error
+                  : "Failed to register bot";
+            }
+          })
+          .catch((err) => {
+            isLoading = false;
             errorMessage = err.message || "An unexpected error occurred";
           });
       }

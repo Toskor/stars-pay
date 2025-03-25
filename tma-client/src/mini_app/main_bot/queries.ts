@@ -27,7 +27,6 @@ class ApiClient {
   ): Promise<ApiResponse<T>> {
     const targetBotId = botId || this.mainBotId;
     const requestUrl = `${this.baseUrl}/${targetBotId}${endpoint}`;
-
     try {
       const response = await fetch(requestUrl, {
         ...options,
@@ -88,14 +87,22 @@ class ApiClient {
     });
   }
 
-  async getAvatar(initData: string, userId: string): Promise<Blob | null> {
+  async getAvatar(
+    initData: string,
+    userId: string,
+    bot_id: string
+  ): Promise<Blob | null> {
+    console.log("getAvatar start", `${this.baseUrl}/${bot_id}/avatar/${userId}`);
     try {
-      const response = await fetch(`${this.baseUrl}/avatar/${userId}`, {
-        method: "GET",
-        headers: {
-          "X-Telegram-InitData": initData,
-        },
-      });
+      const response = await fetch(
+        `${this.baseUrl}/${bot_id}/avatar/${userId}`,
+        {
+          method: "GET",
+          headers: {
+            "X-Telegram-InitData": initData,
+          },
+        }
+      );
 
       if (!response.ok) {
         console.error(`Failed to fetch avatar: ${response.status}`);

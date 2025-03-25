@@ -120,68 +120,57 @@ async function updateAllAvatars(initData: string): Promise<void> {
   const store = get(botsStore);
   if (!store.data) return;
 
-  try {
-    const updatedData = { ...store.data };
+  const updatedData = { ...store.data };
 
-    await Promise.all(
-      updatedData.bots.map(async (bot) => {
-        try {
-          const botAvatar = await getAvatarAsObjectUrl(
-            initData,
-            bot.numeric_id.toString()
-          );
-          if (botAvatar) {
-            bot.avatar = botAvatar;
-          }
-
-          if (bot.owner && bot.owner.id) {
-            const ownerAvatar = await getAvatarAsObjectUrl(
-              initData,
-              bot.owner.id.toString()
-            );
-            if (ownerAvatar) {
-              bot.owner.avatarUrl = ownerAvatar;
-            }
-          }
-
-          if (bot.admins && bot.admins.length > 0) {
-            await Promise.all(
-              bot.admins.map(async (admin) => {
-                if (admin && admin.id) {
-                  const adminAvatar = await getAvatarAsObjectUrl(
-                    initData,
-                    admin.id.toString()
-                  );
-                  if (adminAvatar) {
-                    admin.avatarUrl = adminAvatar;
-                  }
-                }
-              })
-            );
-          }
-        } catch (error) {
-          console.error(`Error updating avatars for bot ${bot.id}:`, error);
+  updatedData.bots.forEach((bot) => {
+    getAvatarAsObjectUrl(initData, bot.numeric_id.toString(), bot.id)
+      .then((botAvatar) => {
+        if (botAvatar) {
+          bot.avatar = botAvatar;
+          botsStore.update((store) => ({ ...store, data: updatedData }));
         }
       })
-    );
+      .catch((error) =>
+        console.error(`Error updating bot avatar ${bot.id}:`, error)
+      );
 
-    botsStore.update((store) => ({
-      ...store,
-      data: updatedData,
-    }));
+    if (bot.owner && bot.owner.id) {
+      getAvatarAsObjectUrl(initData, bot.owner.id.toString(), bot.id)
+        .then((ownerAvatar) => {
+          if (ownerAvatar) {
+            bot.owner.avatarUrl = ownerAvatar;
+            botsStore.update((store) => ({ ...store, data: updatedData }));
+          }
+        })
+        .catch((error) =>
+          console.error(`Error updating owner avatar ${bot.owner.id}:`, error)
+        );
+    }
 
-    console.log("All avatars updated successfully");
-  } catch (error) {
-    console.error("Error updating all avatars:", error);
-  }
+    bot.admins.forEach((admin) => {
+      if (admin && admin.id) {
+        getAvatarAsObjectUrl(initData, admin.id.toString(), bot.id)
+          .then((adminAvatar) => {
+            if (adminAvatar) {
+              admin.avatarUrl = adminAvatar;
+              botsStore.update((store) => ({ ...store, data: updatedData }));
+            }
+          })
+          .catch((error) =>
+            console.error(`Error updating admin avatar ${admin.id}:`, error)
+          );
+      }
+    });
+  });
 }
 
 export async function getAvatarAsObjectUrl(
   initData: string,
-  userId: string
+  userId: string,
+  bot_id: string
 ): Promise<string | null> {
   try {
-    const blob = await getAvatar(initData, userId);
+    const blob = await getAvatar(initData, userId, bot_id);
 
     if (blob) {
       return URL.createObjectURL(blob);

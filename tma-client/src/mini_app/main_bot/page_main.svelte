@@ -37,6 +37,12 @@
   let isRefreshing = $state(false);
 
   let suspendedBots = $state<Bot[]>([]);
+  let hasOwnerBots = $derived(
+    data?.bots?.some((bot) => bot.userRole == "owner") || false
+  );
+  let hasAdminBots = $derived(
+    data?.bots?.some((bot) => bot.userRole == "admin") || false
+  );
 
   async function handleRefresh() {
     isRefreshing = true;
@@ -90,6 +96,7 @@
 {/snippet}
 
 {#if isLoading}
+  <!-- placeholder for loading -->
   <Skeleton style="margin-bottom: 12px;">
     {@render placeholder()}
   </Skeleton>
@@ -97,7 +104,6 @@
   <Skeleton style="margin-bottom: 12px;">
     {@render placeholder()}
   </Skeleton>
-
   <Skeleton>
     {@render placeholder()}
   </Skeleton>
@@ -108,74 +114,124 @@
       Retry
     </Button>
   </div>
+{:else if !(hasOwnerBots || hasAdminBots)}
+  <!-- no bots -->
+  <div class="layout">
+    <Image
+      src="https://avatars.mds.yandex.net/i?id=0b56680182693c18b90b7e5047abbe27db7bd586-9198264-images-thumbs&n=13"
+      size={128}
+    ></Image>
+
+    <div class="layout-horizontal">
+      <Title weight={2} level={2}>You have no bot yet</Title>
+    </div>
+
+    <Button
+      mode="filled"
+      size="l"
+      stretched={true}
+      onclick={() => navigateTo("create")}
+    >
+      Add one
+      {#snippet before()}
+        <AddCircleIcon isFill={true} />
+      {/snippet}
+    </Button>
+  </div>
 {:else}
   <List>
-    <Section>
-      {#snippet header()}
-        <div class="header-row">
-          <SectionHeader>Your bots</SectionHeader>
-          <Button mode="plain" size="s" onclick={() => navigateTo("create")}
-            >Add</Button
-          >
-        </div>
-      {/snippet}
-
-      {#snippet children()}
-        {#if data?.bots.length == 0}
-          <div class="layout">
-            <Image
-              src="https://avatars.mds.yandex.net/i?id=0b56680182693c18b90b7e5047abbe27db7bd586-9198264-images-thumbs&n=13"
-              size={128}
-            ></Image>
-
-            <div class="layout-horizontal">
-              <Title weight={2} level={2}>You have no bot yet</Title>
-            </div>
-
-            <Button
-              mode="filled"
-              size="l"
-              stretched={true}
-              onclick={() => navigateTo("create")}
-            >
-              Add one
-              {#snippet before()}
-                <AddCircleIcon isFill={true} />
-              {/snippet}
+    <!-- Owner Bots Section -->
+    {#if hasOwnerBots}
+      <Section>
+        {#snippet header()}
+          <div class="header-row">
+            <SectionHeader>Your bots</SectionHeader>
+            <Button mode="plain" size="s" onclick={() => navigateTo("create")}>
+              Add
             </Button>
           </div>
-        {:else}
+        {/snippet}
+
+        {#snippet children()}
+          <!-- owner bots -->
           {#each data?.bots || [] as bot, index}
-            <Cell>
-              {#snippet before()}
-                <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
-              {/snippet}
+            {#if bot.userRole === "owner"}
+              <Cell>
+                {#snippet before()}
+                  <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
+                {/snippet}
 
-              {#snippet after()}
-                <Button
-                  mode="bezeled"
-                  size="s"
-                  onclick={() => navigateTo("edit", bot)}>Edit</Button
-                >
-              {/snippet}
+                {#snippet after()}
+                  <Button
+                    mode="bezeled"
+                    size="s"
+                    onclick={() => navigateTo("edit", bot)}
+                  >
+                    Edit
+                  </Button>
+                {/snippet}
 
-              {#snippet children()}
-                {bot.name}
-              {/snippet}
+                {#snippet children()}
+                  {bot.name}
+                {/snippet}
 
-              {#snippet subtitle()}
-                {bot.userRole}
-              {/snippet}
-            </Cell>
+                {#snippet subtitle()}
+                  {bot.userRole}
+                {/snippet}
+              </Cell>
 
-            {#if index < (data?.bots?.length || 0) - 1}
-              <Divider />
+              {#if index < (data?.bots?.length || 0) - 1}
+                <Divider />
+              {/if}
             {/if}
           {/each}
-        {/if}
-      {/snippet}
-    </Section>
+        {/snippet}
+      </Section>
+    {/if}
 
+    <!-- Admin Bots Section -->
+    {#if hasAdminBots}
+      <Section>
+        {#snippet header()}
+          <SectionHeader>Admin bots</SectionHeader>
+        {/snippet}
+
+        {#snippet children()}
+          {#each data?.bots || [] as bot, index}
+            {#if bot.userRole === "admin"}
+              <Cell>
+                {#snippet before()}
+                  <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
+                {/snippet}
+
+                {#snippet after()}
+                  <Button
+                    mode="bezeled"
+                    size="s"
+                    onclick={() => navigateTo("edit", bot)}
+                  >
+                    Edit
+                  </Button>
+                {/snippet}
+
+                {#snippet children()}
+                  {bot.name}
+                {/snippet}
+
+                {#snippet subtitle()}
+                  {bot.userRole}
+                {/snippet}
+              </Cell>
+              {#if index < (data?.bots?.length || 0) - 1}
+                <Divider />
+              {/if}
+            {/if}
+          {/each}
+        {/snippet}
+      </Section>
+    {/if}
+
+    <!-- Suspended Bots Section -->
     {#if suspendedBots.length > 0}
       <Section>
         {#snippet header()}
