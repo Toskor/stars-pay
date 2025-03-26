@@ -67,10 +67,6 @@ pub struct CreateInvoiceQueryParam {
     //subscription_period ?
 }
 
-//{
-// "ok": true,
-// "result": "https://t.me/$3U620DljMEpICQAAqZv97cvJbEw"
-// }
 #[derive(Deserialize, Debug)]
 pub struct CreateInvoiceAnswer {
     pub result: String,
@@ -240,6 +236,16 @@ pub struct DonationButton {
     pub amount: u32,
     pub source_id: u32,
     pub invoice_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSDonationEvent {
+    pub bot_id: String,
+    ///@username
+    pub from: String,
+    //currency: always TgStars,
+    pub total_amount: u32,
+    pub invoice_payload: String,
 }
 
 #[cfg(test)]

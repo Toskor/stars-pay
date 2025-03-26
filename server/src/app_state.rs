@@ -1,15 +1,15 @@
 use anyhow::{anyhow, Result};
 use lru::LruCache;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
-use crate::json;
 use crate::{
     api,
     db::{DBBot, DataBase},
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
     CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
 };
+use crate::{json, WS_CHANNEL_SIZE};
 
 #[derive(Debug, Clone, Copy)]
 pub enum UserRole {
@@ -48,17 +48,30 @@ pub struct ControlledBots {
 pub struct AppState {
     pub cache: Mutex<LruCache<String, DBBot>>,
     pub db: DataBase,
+    pub donation_channel_tx: broadcast::Sender<json::WSDonationEvent>,
+    ///for keep channel alive
+    _donation_channel_rx: broadcast::Receiver<json::WSDonationEvent>,
 }
 
 impl AppState {
-    pub async fn new() -> Self {
+    pub async fn new() -> (Self, broadcast::Sender<json::WSDonationEvent>) {
         //todo move db path to env?
         let db = DataBase::new_sql_lite("db/bots_data_base.sqlite")
             .await
             .expect("Failed to create database");
 
         let cache = Mutex::new(LruCache::new(CACHE_SIZE));
-        Self { cache, db }
+        let (tx, rx) = broadcast::channel::<json::WSDonationEvent>(WS_CHANNEL_SIZE);
+
+        (
+            Self {
+                cache,
+                db,
+                donation_channel_tx: tx.clone(),
+                _donation_channel_rx: rx,
+            },
+            tx,
+        )
     }
 
     pub async fn prepare(&self) -> Result<()> {
@@ -66,38 +79,38 @@ impl AppState {
         //todo add main bot in db
 
         //main bot
-        match self.add_mainbot().await {
-            Ok(_) => println!("Bot added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self.add_mainbot().await {
+        //     Ok(_) => println!("Bot added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
         //second_test_1
-        match self
-            .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
-            .await
-        {
-            Ok(_) => println!("Bot added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self
+        //     .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
+        //     .await
+        // {
+        //     Ok(_) => println!("Bot added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
-        match self.add_bot_admin(348135868, "second_test_1", 487373).await {
-            Ok(_) => println!("Bot admin added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self.add_bot_admin(348135868, "second_test_1", 487373).await {
+        //     Ok(_) => println!("Bot admin added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
         //star_donation
-        match self
-            .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
-            .await
-        {
-            Ok(_) => println!("Bot added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self
+        //     .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
+        //     .await
+        // {
+        //     Ok(_) => println!("Bot added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
-        match self.add_bot_admin(348135868, "star_donation", 487373).await {
-            Ok(_) => println!("Bot admin added"),
-            Err(e) => println!("Error: {}", e),
-        }
+        // match self.add_bot_admin(348135868, "star_donation", 487373).await {
+        //     Ok(_) => println!("Bot admin added"),
+        //     Err(e) => println!("Error: {}", e),
+        // }
 
         self.update_mini_app_source(MAIN_BOT_ID.to_string())
             .await
@@ -121,8 +134,7 @@ impl AppState {
             ));
         };
 
-        let name = bot_info.username.to_lowercase();
-        let bot_id = name.trim_end_matches("bot").trim_end_matches("_");
+        let bot_id = get_bot_id_from_username(&bot_info.username);
 
         if bot_id == MAIN_BOT_ID {
             return Err(anyhow::anyhow!("Cant add main bot"));
@@ -224,7 +236,6 @@ impl AppState {
     //todo move path to env?
     pub async fn update_mini_app_source(&self, bot_id: String) -> Result<()> {
         let path = format!("server/src/mini_app_sources/{}.html", bot_id);
-        println!("path: {}", path);
 
         let html = if bot_id == MAIN_BOT_ID {
             HTML_MAIN_BOT_MINI_APP.to_string()
@@ -420,4 +431,13 @@ impl AppState {
         self.db.change_bot_token(user_id, bot_id, new_token).await?;
         Ok(())
     }
+}
+
+pub fn get_bot_id_from_username(bot_username: &str) -> String {
+    bot_username
+        .to_lowercase()
+        .trim_start_matches("@")
+        .trim_end_matches("bot")
+        .trim_end_matches("_")
+        .to_string()
 }

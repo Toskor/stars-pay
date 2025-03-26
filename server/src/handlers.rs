@@ -12,7 +12,7 @@ use integrations::http;
 use serde_json::Value;
 use sha2::Sha256;
 use std::{collections::HashMap, str::FromStr, sync::Arc};
-use tokio::fs::File;
+use tokio::{fs::File, sync::broadcast};
 use tokio_util::io::ReaderStream;
 use tower::{Service, ServiceExt};
 use tower_http::services::{ServeDir, ServeFile};
@@ -885,7 +885,7 @@ pub async fn webhook_handler(
                 Err(e) => error = e,
             }
         } else {
-            match parse_update(&payload, &token).await {
+            match parse_update(&payload, &token, &state.donation_channel_tx, bot_id).await {
                 Ok(json) => return (StatusCode::OK, Json(json)),
                 Err(e) => error = e,
             }
@@ -898,7 +898,12 @@ pub async fn webhook_handler(
     )
 }
 
-pub async fn parse_update(update: &json::Update, token: &str) -> Result<Value> {
+pub async fn parse_update(
+    update: &json::Update,
+    token: &str,
+    donation_channel_tx: &broadcast::Sender<json::WSDonationEvent>,
+    bot_id: String,
+) -> Result<Value> {
     let tg_api_url = api::get_tg_api_url(token);
     match &update.data {
         json::UpdateData::PreCheckoutQuery(pre_checkout_query) => {
@@ -911,8 +916,16 @@ pub async fn parse_update(update: &json::Update, token: &str) -> Result<Value> {
             .unwrap();
 
             if let Ok(res) = http::get(&uri, None).await {
-                println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
-                //here send my donation event via websocket
+                // example {"ok":true,"result":true}
+                // println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
+
+                let ws_donation_event = json::WSDonationEvent {
+                    bot_id,
+                    from: pre_checkout_query.from.username.clone(),
+                    total_amount: pre_checkout_query.total_amount,
+                    invoice_payload: pre_checkout_query.invoice_payload.clone(),
+                };
+                donation_channel_tx.send(ws_donation_event)?;
             }
         }
         json::UpdateData::Message(message) => {

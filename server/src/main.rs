@@ -6,12 +6,18 @@ use axum::{
 };
 use db::{DBBot, DataBase};
 use handlers::{
-    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice, fetch_user_bots, mini_app, remove_bot, remove_bot_admin, update_config, webhook_handler
+    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice,
+    fetch_user_bots, mini_app, remove_bot, remove_bot_admin, update_config, webhook_handler,
 };
 
 use main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
 use std::{num::NonZeroUsize, sync::Arc};
-use tokio::{self, fs::OpenOptions, io::AsyncWriteExt, sync::Mutex};
+use tokio::{
+    self,
+    fs::OpenOptions,
+    io::AsyncWriteExt,
+    sync::{broadcast, Mutex},
+};
 
 #[macro_use]
 extern crate dotenv_codegen;
@@ -22,6 +28,7 @@ pub mod db;
 mod handlers;
 pub mod json;
 pub mod main_bot;
+pub mod ws_server;
 
 const PATH_TO_DIST: &str = "../../tma-client/dist/src/pages";
 const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
@@ -31,10 +38,14 @@ const HTML_MAIN_BOT_MINI_APP: &str =
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
 const CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
+const WS_CHANNEL_SIZE: usize = 100;
 
 #[tokio::main]
 async fn main() {
-    let arc_app_state = Arc::new(AppState::new().await);
+    // let (event_tx, _) = broadcast::channel::<json::WSDonationEvent>(100);
+
+    let (app_state, event_tx) = AppState::new().await;
+    let arc_app_state = Arc::new(app_state);
     arc_app_state.prepare().await.unwrap();
 
     //stardonationservice no need /app route cause /:bot_id/app enough
@@ -54,17 +65,42 @@ async fn main() {
             post(remove_bot_admin),
         )
         .route("/stardonationservice/removeBot", post(remove_bot))
-        .route("/stardonationservice/changeBotToken", post(change_bot_token))
-        
+        .route(
+            "/stardonationservice/changeBotToken",
+            post(change_bot_token),
+        )
         //app state
         .with_state(arc_app_state);
 
-    let listener = tokio::net::TcpListener::bind("localhost:5001")
-        .await
-        .unwrap();
-    println!("Listening on {:?}", listener);
+    let _axum_task = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind("localhost:5001")
+            .await
+            .unwrap();
+        println!("Listening on {:?}", listener);
 
-    axum::serve(listener, app).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let _port = ws_server::start(event_tx.clone(), "localhost:5002").await;
+
+    let _test_task = tokio::spawn({
+        let event_tx = event_tx.clone();
+        async move {
+            loop {
+                let msg = json::WSDonationEvent {
+                    bot_id: "test".to_string(),
+                    from: "test".to_string(),
+                    total_amount: 100,
+                    invoice_payload: "test".to_string(),
+                };
+                event_tx.send(msg).unwrap();
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    });
+
+    // let _channel_keeper = event_tx.subscribe();
+    tokio::signal::ctrl_c().await.unwrap();
 }
 
 #[cfg(test)]
@@ -80,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn upd_mini_app_source() {
-        let app_state = AppState::new().await;
+        let (app_state, _) = AppState::new().await;
         app_state
             .update_mini_app_source("star_donation".to_string())
             .await
@@ -89,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_controlled_bots() {
-        let app_state = AppState::new().await;
+        let (app_state, _) = AppState::new().await;
         let controlled_bots = app_state.get_controlled_bots(348135868).await.unwrap();
         println!("{:?}", controlled_bots);
     }
