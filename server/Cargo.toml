@@ -31,7 +31,7 @@ sha2 = "0.10"
 hex = "0.4"
 
 #ws server
-fastwebsockets = { version = "0.7", features = ["upgrade"] }
+fastwebsockets = { version = "0.7", features = ["upgrade", "with_axum"] }
 http-body-util = { version = "0.1" }
 hyper-util = { version = "0.1", features = ["tokio"] }
 

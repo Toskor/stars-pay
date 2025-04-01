@@ -13,6 +13,7 @@ pub struct DBBot {
 
     pub token: String,
     pub secret_token: String,
+    pub ws_token: String,
 
     // pub app_config: String,
     pub owner: u64,
@@ -24,6 +25,7 @@ impl DBBot {
         id: String,
         token: String,
         secret_token: String,
+        ws_token: String,
         owner: u64,
         admins: Vec<u64>,
     ) -> Self {
@@ -32,6 +34,7 @@ impl DBBot {
             // numeric_id,
             token,
             secret_token,
+            ws_token,
             owner,
             admins,
         }
@@ -53,6 +56,7 @@ impl DataBase {
                 id              TEXT PRIMARY KEY NOT NULL,
                 token           TEXT NOT NULL,
                 secret_token    TEXT NOT NULL,
+                ws_token        TEXT NOT NULL,
                 app_config      TEXT NOT NULL,
                 owner           INTEGER NOT NULL,
                 admins          TEXT NOT NULL
@@ -96,7 +100,7 @@ impl DataBase {
         let bots = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    "SELECT id, token, secret_token, owner, admins FROM bots 
+                    "SELECT id, token, secret_token, ws_token, owner, admins FROM bots 
                     WHERE admins LIKE :search_pattern",
                 )?;
                 let query_result =
@@ -104,8 +108,9 @@ impl DataBase {
                         let id: String = row.get(0)?;
                         let token: String = row.get(1)?;
                         let secret_token: String = row.get(2)?;
-                        let owner: u64 = row.get(3)?;
-                        let admins_json = row.get_ref(4)?.as_str()?;
+                        let ws_token: String = row.get(3)?;
+                        let owner: u64 = row.get(4)?;
+                        let admins_json = row.get_ref(5)?.as_str()?;
                         let admins: Vec<u64> =
                             serde_json::from_str(admins_json).map_err(map_serde_err)?;
 
@@ -114,6 +119,7 @@ impl DataBase {
                                 id,
                                 token,
                                 secret_token,
+                                ws_token,
                                 owner,
                                 admins: admins.into_iter().filter(|&id| id != owner).collect(),
                             }))
@@ -139,19 +145,20 @@ impl DataBase {
         let bots = conn
             .call(move |conn| {
                 let mut stmt =
-                    conn.prepare_cached("SELECT id, token, secret_token, owner, admins FROM bots WHERE owner = :owner_id")?;
+                    conn.prepare_cached("SELECT id, token, secret_token, ws_token, owner, admins FROM bots WHERE owner = :owner_id")?;
                 let bots_map = stmt.query_map(named_params! { ":owner_id": owner_id }, |row| {
                     let id: String = row.get(0)?;
                     let token: String = row.get(1)?;
                     let secret_token: String = row.get(2)?;
-                    let owner: u64 = row.get(3)?;
+                    let ws_token: String = row.get(3)?;
+                    let owner: u64 = row.get(4)?;
 
-                    let admins_json = row.get_ref(4)?.as_str()?;
+                    let admins_json = row.get_ref(5)?.as_str()?;
                     let admins: Vec<u64> =
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
                     let admins = admins.into_iter().filter(|&id| id != owner_id).collect();
 
-                    Ok(DBBot { id, token, secret_token, owner, admins })
+                    Ok(DBBot { id, token, secret_token, ws_token, owner, admins })
                 })?;
                 let mut bots: Vec<DBBot> = vec![];
                 for bot in bots_map.into_iter() {
@@ -169,10 +176,10 @@ impl DataBase {
         let bot = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    "SELECT id, token, secret_token, owner, admins FROM bots WHERE id = ?",
+                    "SELECT id, token, secret_token, ws_token, owner, admins FROM bots WHERE id = ?",
                 )?;
                 let bot = stmt.query_row([bot_id], |row| {
-                    let admins_json = row.get_ref(4)?.as_str()?;
+                    let admins_json = row.get_ref(5)?.as_str()?;
                     let admins: Vec<u64> =
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
 
@@ -180,7 +187,8 @@ impl DataBase {
                         id: row.get(0)?,
                         token: row.get(1)?,
                         secret_token: row.get(2)?,
-                        owner: row.get(3)?,
+                        ws_token: row.get(3)?,
+                        owner: row.get(4)?,
                         admins: admins,
                     })
                 })?;
@@ -199,11 +207,12 @@ impl DataBase {
 
         conn.call(move |conn| {
             conn.execute(
-                "INSERT INTO bots (id, token, secret_token, app_config, owner, admins) VALUES (:id, :token, :secret_token, :app_config, :owner, :admins)",
+                "INSERT INTO bots (id, token, secret_token, ws_token, app_config, owner, admins) VALUES (:id, :token, :secret_token, :ws_token, :app_config, :owner, :admins)",
                 named_params! {
                     ":id": &bot.id,
                     ":token": &bot.token,
                     ":secret_token": &bot.secret_token,
+                    ":ws_token": &bot.ws_token,
                     ":app_config": &app_config,
                     ":owner": &bot.owner,
                     ":admins": &admins_json,
@@ -222,10 +231,11 @@ impl DataBase {
 
         conn.call(move |conn| {
             conn.execute(
-                "UPDATE bots SET token = :token, secret_token = :secret_token, owner = :owner, admins = :admins WHERE id = :id",
+                "UPDATE bots SET token = :token, secret_token = :secret_token, ws_token = :ws_token, owner = :owner, admins = :admins WHERE id = :id",
                 named_params! {
                     ":token": &bot.token,
                     ":secret_token": &bot.secret_token,
+                    ":ws_token": &bot.ws_token,
                     ":owner": &bot.owner,
                     ":admins": &admins_json,
                     ":id": &bot.id,
@@ -313,6 +323,20 @@ impl DataBase {
             .call(move |conn| {
                 conn.query_row(
                     "SELECT token FROM bots WHERE id = :id",
+                    named_params! { ":id": &bot_id },
+                    |row| row.get(0),
+                )
+            })
+            .await?;
+        Ok(token)
+    }
+
+    pub async fn get_bot_ws_token(&self, bot_id: String) -> Result<String> {
+        let conn = &self.conn;
+        let token = conn
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT ws_token FROM bots WHERE id = :id",
                     named_params! { ":id": &bot_id },
                     |row| row.get(0),
                 )
@@ -473,16 +497,25 @@ mod tests {
             .await
             .expect("Failed to create database");
 
-        db.update_bot_config("second_test_1".to_string(), preview_default_config.to_string())
-            .await
-            .unwrap();
+        db.update_bot_config(
+            "second_test_1".to_string(),
+            preview_default_config.to_string(),
+        )
+        .await
+        .unwrap();
 
-        db.update_bot_config("star_donation".to_string(), preview_default_config.to_string())
-            .await
-            .unwrap();
+        db.update_bot_config(
+            "star_donation".to_string(),
+            preview_default_config.to_string(),
+        )
+        .await
+        .unwrap();
 
-        db.update_bot_config("just_for_test75w67".to_string(), preview_default_config.to_string())
-            .await
-            .unwrap();
+        db.update_bot_config(
+            "just_for_test75w67".to_string(),
+            preview_default_config.to_string(),
+        )
+        .await
+        .unwrap();
     }
 }

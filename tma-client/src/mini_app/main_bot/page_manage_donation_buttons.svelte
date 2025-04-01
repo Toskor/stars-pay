@@ -206,6 +206,12 @@
             mode="plain"
             size="s"
             onclick={() => {
+              if (!preview_data) {
+                preview_data = {
+                  donation_buttons: [],
+                  title: "",
+                };
+              }
               showAddForm = true;
             }}>Add</Button
           >

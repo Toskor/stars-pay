@@ -223,13 +223,13 @@ pub struct ConfigQueryParam {
     pub target_bot_id: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct TMAAppConfig {
     pub donation_buttons: Vec<DonationButton>,
     pub title: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct DonationButton {
     pub name: String,
     pub description: String,
@@ -240,12 +240,16 @@ pub struct DonationButton {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WSDonationEvent {
-    pub bot_id: String,
     ///@username
     pub from: String,
     //currency: always TgStars,
     pub total_amount: u32,
     pub invoice_payload: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WSConnectionParams {
+    pub ws_token: String,
 }
 
 #[cfg(test)]

@@ -398,8 +398,11 @@ version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93da8b19e29f202ef35ddd20ddea8c86166850fce5ba2a3c3f3e3174cdbb0620"
 dependencies = [
+ "async-trait",
+ "axum-core",
  "base64",
  "bytes",
+ "http",
  "http-body-util",
  "hyper",
  "hyper-util",

@@ -6,6 +6,7 @@ use axum::{
     http::HeaderValue,
     response::{IntoResponse, Response},
 };
+use fastwebsockets::upgrade;
 use hmac::{Hmac, Mac};
 use hyper::{header, HeaderMap, StatusCode, Uri};
 use integrations::http;
@@ -19,8 +20,10 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     api::{self, bot_numeric_id_from_token},
+    app_state::get_bot_id_from_username,
     json,
     main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
+    ws_server::{self, handle_client},
     AppState, HTML_MINI_APP,
 };
 use crate::{app_state::ControlledBots, db::DBBot};
@@ -848,6 +851,87 @@ pub async fn change_bot_token(
         ),
     }
 }
+
+pub async fn get_bot_ws_token(
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(&bot_id, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                if user.id == bot.owner || bot.admins.contains(&user.id) {
+                    return Some(bot.ws_token.clone());
+                }
+            }
+            None
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(ws_token)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "success", "ws_token": ws_token})),
+        ),
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn ws_handler(
+    ws: upgrade::IncomingUpgrade,
+    Path(bot_username): Path<String>,
+    Query(params): Query<json::WSConnectionParams>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let bot_id = get_bot_id_from_username(&bot_username);
+    let ws_token = params.ws_token;
+
+    let security_check = state
+        .with_record(&bot_id, |bot| {
+            if bot.ws_token == ws_token {
+                Some(())
+            } else {
+                None
+            }
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(())) => {
+            let (response, fut) = ws.upgrade().unwrap();
+
+            tokio::task::spawn(async move {
+                if let Err(e) = handle_client(fut, state.clone(), bot_id).await {
+                    eprintln!("Error in websocket connection: {}", e);
+                }
+            });
+
+            response.into_response()
+        }
+        Ok(None) => {
+            println!("Ws token mismatch");
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from("Ws token mismatch"))
+                .unwrap();
+        }
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(e.to_string()))
+                .unwrap();
+        }
+    }
+}
+
 // #[axum::debug_handler]
 pub async fn webhook_handler(
     headers: HeaderMap,
@@ -885,7 +969,7 @@ pub async fn webhook_handler(
                 Err(e) => error = e,
             }
         } else {
-            match parse_update(&payload, &token, &state.donation_channel_tx, bot_id).await {
+            match parse_update(&payload, &token, &state, bot_id).await {
                 Ok(json) => return (StatusCode::OK, Json(json)),
                 Err(e) => error = e,
             }
@@ -901,7 +985,7 @@ pub async fn webhook_handler(
 pub async fn parse_update(
     update: &json::Update,
     token: &str,
-    donation_channel_tx: &broadcast::Sender<json::WSDonationEvent>,
+    state: &Arc<AppState>,
     bot_id: String,
 ) -> Result<Value> {
     let tg_api_url = api::get_tg_api_url(token);
@@ -920,12 +1004,17 @@ pub async fn parse_update(
                 // println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
 
                 let ws_donation_event = json::WSDonationEvent {
-                    bot_id,
                     from: pre_checkout_query.from.username.clone(),
                     total_amount: pre_checkout_query.total_amount,
                     invoice_payload: pre_checkout_query.invoice_payload.clone(),
                 };
-                donation_channel_tx.send(ws_donation_event)?;
+
+                state
+                    .send_donation_to_room_members(
+                        bot_id,
+                        serde_json::to_vec(&ws_donation_event).unwrap(),
+                    )
+                    .await;
             }
         }
         json::UpdateData::Message(message) => {

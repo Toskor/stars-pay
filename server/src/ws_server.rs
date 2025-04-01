@@ -14,50 +14,66 @@ use tokio::{
     sync::broadcast,
     time::{sleep, timeout, Duration},
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{app_state, json};
 
+fn get_next_client_id() -> usize {
+    static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
+    NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed)
+}
 
-
-//just for test, remove later
+//just for test, removed later
 #[derive(Debug, Serialize, Deserialize)]
 struct EchoResponse {
     bot_id: String,
     message: String,
 }
 
-async fn handle_client(
+pub async fn handle_client(
     fut: upgrade::UpgradeFut,
-    event_tx: broadcast::Sender<json::WSDonationEvent>,
+    app_state: std::sync::Arc<crate::app_state::AppState>,
+    bot_id: String,
 ) -> Result<(), WebSocketError> {
-    println!("start client");
-    let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
-    let mut event_rx = event_tx.subscribe();
-    let mut tmp_buf = vec![];
-    let mut last_ping_time = std::time::Instant::now();
+    let cid = get_next_client_id();
 
-    // First message should be bot username like "@StarDonationServiceBot"
-    let frame = ws.read_frame().await?;
-    let bot_id = if let OpCode::Text = frame.opcode {
-        let bot_id = String::from_utf8(frame.payload.to_vec()).unwrap();
-        app_state::get_bot_id_from_username(&bot_id)
-    } else {
-        println!("Expected bot_id as first message");
-        return Ok(());
+    let (room_tx, room_members_count) = match app_state.get_or_create_room(&bot_id).await {
+        Ok(result) => result,
+        Err(e) => {
+            println!("Error joining room for bot_id {}: {}", bot_id, e);
+
+            let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
+
+            let error_msg =
+                format!("{{\"error\": \"maxout: {bot_id} already has maximum clients\"}}");
+            let frame = Frame::text(Payload::Owned(error_msg.into_bytes()));
+
+            let _ = ws.write_frame(frame).await;
+            let _ = ws.write_frame(Frame::close(1000, &[])).await;
+
+            return Ok(());
+        }
     };
 
-    println!("Client connected with bot_id: {}", bot_id);
+    let mut room_rx = room_tx.subscribe();
+    println!(
+        "Client {} connected with bot_id: {} (room size: {})",
+        cid, bot_id, room_members_count + 1
+    );
+
+    let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
+    let mut tmp_buf = vec![];
+    let mut last_ping_time = std::time::Instant::now();
 
     loop {
         tokio::select! {
             Ok(frame) = ws.read_frame() => {
                 match frame.opcode {
                     OpCode::Close => {
-                        println!("OpCode::Close received");
+                        println!("OpCode::Close received from client {}", cid);
                         break;
                     }
                     OpCode::Ping => {
-                        println!("handle client ping");
                         let pong = Frame::pong(frame.payload);
                         let _res = ws.write_frame(pong).await;
                     }
@@ -67,7 +83,6 @@ async fn handle_client(
                     OpCode::Text => {
                         let text = String::from_utf8(frame.payload.to_vec()).unwrap();
 
-                        // Echo back with bot_id
                         let response = EchoResponse {
                             bot_id: bot_id.clone(),
                             message: text.clone(),
@@ -81,14 +96,14 @@ async fn handle_client(
                     _ => {}
                 }
             }
-            Ok(donation) = event_rx.recv() => {
-                // Only send messages to matching bot_id
-                if donation.bot_id == bot_id {
-                    tmp_buf.clear();
-                    serde_json::to_writer(&mut tmp_buf, &donation).unwrap();
-                    let payload = Payload::Borrowed(&tmp_buf);
+            Ok((other_cid, msg)) = room_rx.recv() => {
+                if other_cid != cid {
+                    let payload = Payload::Owned(msg);
                     let frame = Frame::text(payload);
-                    let _res = ws.write_frame(frame).await;
+                    if let Err(e) = ws.write_frame(frame).await {
+                        println!("Error sending message to client {}: {}", cid, e);
+                        break;
+                    }
                 }
             }
             _ = sleep(Duration::from_secs(4)) => {
@@ -106,26 +121,35 @@ async fn handle_client(
         }
     }
 
-    println!("end client");
+    app_state.remove_client_from_room(&bot_id, cid).await;
+    println!("Client {} disconnected from bot_id: {}", cid, bot_id);
     Ok(())
 }
 
+//for testing ws server alone
 async fn server_upgrade(
     mut req: Request<Incoming>,
-    event_tx: broadcast::Sender<json::WSDonationEvent>,
+    event_tx: broadcast::Sender<(String, json::WSDonationEvent)>,
+    app_state: std::sync::Arc<crate::app_state::AppState>,
+    bot_id: String,
 ) -> Result<Response<Empty<Bytes>>, WebSocketError> {
     let (response, fut) = upgrade::upgrade(&mut req)?;
 
     tokio::spawn(async move {
-        if let Err(e) = handle_client(fut, event_tx).await {
+        if let Err(e) = handle_client(fut, app_state, bot_id).await {
             eprintln!("Error in websocket connection: {}", e);
         }
     });
 
-    Ok(response)
+    return Ok(response);
 }
 
-pub async fn start(event_tx: broadcast::Sender<json::WSDonationEvent>, addr: &str) -> Option<u16> {
+//for testing ws server alone
+async fn start(
+    event_tx: broadcast::Sender<(String, json::WSDonationEvent)>,
+    addr: &str,
+    app_state: std::sync::Arc<crate::app_state::AppState>,
+) -> Option<u16> {
     let listener = TcpListener::bind(addr).await.unwrap();
     println!("start server with addr! {}", listener.local_addr().unwrap());
     let port = listener.local_addr().ok().map(|a| a.port());
@@ -135,10 +159,40 @@ pub async fn start(event_tx: broadcast::Sender<json::WSDonationEvent>, addr: &st
             while let Ok((stream, _)) = listener.accept().await {
                 println!("ws server listener accept");
 
-                let service = service_fn(|r| {
+                let service = service_fn(|req: Request<Incoming>| {
                     let sender = event_tx.clone();
-                    async move { server_upgrade(r, sender).await }
+                    let app_state = app_state.clone();
+
+                    // easier with axum
+                    // Extract bot_id from the request query parameters
+                    let bot_id = if let Some(query) = req.uri().query() {
+                        // Parse the query string
+                        query
+                            .split('&')
+                            .filter_map(|kv| {
+                                let mut parts = kv.splitn(2, '=');
+                                if let (Some(k), Some(v)) = (parts.next(), parts.next()) {
+                                    if k == "bot_id" {
+                                        return Some(v.to_string());
+                                    }
+                                }
+                                None
+                            })
+                            .next()
+                            .unwrap_or_else(|| {
+                                println!("No bot_id found in query params, using default");
+                                "123".to_string()
+                            })
+                    } else {
+                        println!("No query parameters found, using default bot_id");
+                        "123".to_string()
+                    };
+
+                    println!("WebSocket connection request with bot_id: {}", bot_id);
+
+                    async move { server_upgrade(req, sender, app_state, bot_id).await }
                 });
+
                 let io = hyper_util::rt::TokioIo::new(stream);
 
                 let conn_fut = http1::Builder::new()
@@ -155,15 +209,22 @@ pub async fn start(event_tx: broadcast::Sender<json::WSDonationEvent>, addr: &st
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use tokio::sync::broadcast;
 
-    use crate::{json::WSDonationEvent, *};
+    use crate::{app_state::AppState, json::WSDonationEvent, ws_server};
 
     #[tokio::test]
     async fn base() {
-        let (event_tx, _) = broadcast::channel::<WSDonationEvent>(100);
-        let port = ws_server::start(event_tx, "localhost:5002").await.expect("msg");
-        println!("port {}", port);
+        let (event_tx, _) = broadcast::channel::<(String, WSDonationEvent)>(100);
+        let app_state = Arc::new(AppState::new().await);
+        let port = ws_server::start(event_tx, "localhost:5002", app_state.clone())
+            .await
+            .expect("msg");
+
         _ = tokio::signal::ctrl_c().await;
+
+        let rooms = app_state.rooms.read().await;
+        println!("Rooms after shutdown: {} rooms remaining", rooms.len());
     }
 }

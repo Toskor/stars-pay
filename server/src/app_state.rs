@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Result};
 use lru::LruCache;
-use tokio::sync::{broadcast, Mutex};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
 use crate::{
@@ -9,7 +11,9 @@ use crate::{
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
     CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
 };
-use crate::{json, WS_CHANNEL_SIZE};
+use crate::{json, ROOM_CAPACITY};
+
+pub type Rooms = HashMap<String, broadcast::Sender<(usize, Vec<u8>)>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UserRole {
@@ -48,43 +52,32 @@ pub struct ControlledBots {
 pub struct AppState {
     pub cache: Mutex<LruCache<String, DBBot>>,
     pub db: DataBase,
-    pub donation_channel_tx: broadcast::Sender<json::WSDonationEvent>,
-    ///for keep channel alive
-    _donation_channel_rx: broadcast::Receiver<json::WSDonationEvent>,
+    pub rooms: RwLock<Rooms>,
 }
 
 impl AppState {
-    pub async fn new() -> (Self, broadcast::Sender<json::WSDonationEvent>) {
+    pub async fn new() -> Self {
         //todo move db path to env?
         let db = DataBase::new_sql_lite("db/bots_data_base.sqlite")
             .await
             .expect("Failed to create database");
 
         let cache = Mutex::new(LruCache::new(CACHE_SIZE));
-        let (tx, rx) = broadcast::channel::<json::WSDonationEvent>(WS_CHANNEL_SIZE);
+        let rooms = RwLock::new(HashMap::new());
 
-        (
-            Self {
-                cache,
-                db,
-                donation_channel_tx: tx.clone(),
-                _donation_channel_rx: rx,
-            },
-            tx,
-        )
+        Self { cache, db, rooms }
     }
 
     pub async fn prepare(&self) -> Result<()> {
-        //todo create 404.html in mini_app_sources
         //todo add main bot in db
 
-        //main bot
+        // //main bot
         // match self.add_mainbot().await {
         //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error: {}", e),
+        //     Err(e) => println!("Error1: {}", e),
         // }
 
-        //second_test_1
+        // //second_test_1
         // match self
         //     .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
         //     .await
@@ -92,13 +85,12 @@ impl AppState {
         //     Ok(_) => println!("Bot added"),
         //     Err(e) => println!("Error: {}", e),
         // }
-
         // match self.add_bot_admin(348135868, "second_test_1", 487373).await {
         //     Ok(_) => println!("Bot admin added"),
         //     Err(e) => println!("Error: {}", e),
         // }
 
-        //star_donation
+        // //star_donation
         // match self
         //     .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
         //     .await
@@ -106,7 +98,6 @@ impl AppState {
         //     Ok(_) => println!("Bot added"),
         //     Err(e) => println!("Error: {}", e),
         // }
-
         // match self.add_bot_admin(348135868, "star_donation", 487373).await {
         //     Ok(_) => println!("Bot admin added"),
         //     Err(e) => println!("Error: {}", e),
@@ -163,10 +154,13 @@ impl AppState {
         let secret_token = api::generate_secret_token();
         api::set_tg_webhook(token, &webhook_url, &secret_token).await?;
 
+        let ws_token = api::generate_ws_token();
+
         let bot: DBBot = DBBot::new(
             bot_id.to_string(),
             token.to_string(),
             secret_token,
+            ws_token,
             owner,
             admins,
         );
@@ -189,16 +183,18 @@ impl AppState {
 
         let webhook_url = format!("{api_url}webhook");
         let secret_token = api::generate_secret_token();
-        api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
+        // api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
+
+        let ws_token = api::generate_ws_token();
 
         let bot: DBBot = DBBot::new(
             MAIN_BOT_ID.to_string(),
             MAIN_BOT_TOKEN.to_string(),
             secret_token,
+            ws_token,
             MAIN_BOT_OWNER,
             MAIN_BOT_ADMINS.to_vec(),
         );
-
         self.db.insert_bot(bot, "".to_string()).await?;
         Ok(())
     }
@@ -221,6 +217,10 @@ impl AppState {
 
     pub async fn get_bot_token(&self, bot_id: String) -> Result<String> {
         self.db.get_bot_token(bot_id).await
+    }
+
+    pub async fn get_bot_ws_token(&self, bot_id: String) -> Result<String> {
+        self.db.get_bot_ws_token(bot_id).await
     }
 
     pub async fn update_bot_config(&self, bot_id: String, app_config: String) -> Result<()> {
@@ -430,6 +430,66 @@ impl AppState {
     ) -> Result<()> {
         self.db.change_bot_token(user_id, bot_id, new_token).await?;
         Ok(())
+    }
+
+    pub async fn get_or_create_room(
+        &self,
+        bot_id: &str,
+    ) -> Result<(broadcast::Sender<(usize, Vec<u8>)>, usize)> {
+        {
+            // Hashmap.get() cause RWLock.read()
+            let rooms = self.rooms.read().await;
+            if let Some(tx) = rooms.get(bot_id) {
+                let client_count = tx.receiver_count();
+
+                if client_count > ROOM_CAPACITY {
+                    return Err(anyhow!("maxout: room already has maximum clients"));
+                }
+
+                return Ok((tx.clone(), client_count));
+            }
+        }
+
+        let mut rooms = self.rooms.write().await;
+        let (tx, _rx) = broadcast::channel(32); // Same capacity as in gist
+        rooms.insert(bot_id.to_string(), tx.clone());
+
+        Ok((tx, 0))
+    }
+
+    pub async fn remove_client_from_room(&self, bot_id: &str, cid: usize) {
+        let mut should_remove_room = false;
+        let left_in_room = {
+            let rooms = self.rooms.read().await;
+            if let Some(tx) = rooms.get(bot_id) {
+                let count = tx.receiver_count();
+                if count <= 1 {
+                    should_remove_room = true;
+                }
+                count
+            } else {
+                0
+            }
+        };
+
+        if should_remove_room {
+            let mut rooms = self.rooms.write().await;
+            rooms.remove(bot_id);
+            println!("Removed empty room for bot_id: {}", bot_id);
+        } else {
+            println!(
+                "Client {} left room {}, {} clients remaining",
+                cid, bot_id, left_in_room
+            );
+        }
+    }
+
+    pub async fn send_donation_to_room_members(&self, room_id: String, donation: Vec<u8>) {
+        let rooms = self.rooms.read().await;
+        if let Some(tx) = rooms.get(&room_id) {
+            // 0 is primary cid, no one will have same cid
+            tx.send((0, donation)).unwrap();
+        }
     }
 }
 

@@ -7,6 +7,9 @@ use hyper::{header, HeaderMap, StatusCode};
 pub fn generate_secret_token() -> String {
     uuid::Uuid::new_v4().to_string()
 }
+pub fn generate_ws_token() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
 pub fn get_tg_api_url(token: &str) -> String {
     format!("https://api.telegram.org/bot{}/", token)
 }
@@ -35,6 +38,7 @@ pub async fn set_tg_webhook(token: &str, webhook_url: &str, secret_token: &str) 
         // println!("{}", res.to_str().unwrap());
         Ok(())
     } else {
+        // println!("{}", res.to_str().unwrap());
         let err: json::Error = res.to_json()?;
         Err(anyhow::anyhow!("{}", err.description))
     }
