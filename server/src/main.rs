@@ -5,9 +5,7 @@ use axum::{
     Router,
 };
 use handlers::{
-    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice,
-    fetch_user_bots, get_bot_ws_token, mini_app, remove_bot, remove_bot_admin, update_config,
-    webhook_handler, ws_handler,
+    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice, fetch_user_bots, get_bot_ws_token, mini_app, refresh_layer_token, remove_bot, remove_bot_admin, update_config, webhook_handler, ws_handler
 };
 
 use main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
@@ -72,6 +70,10 @@ async fn main() {
         .route(
             "/stardonationservice/changeBotToken",
             post(change_bot_token),
+        )
+        .route(
+            "/stardonationservice/refreshLayerToken",
+            post(refresh_layer_token),
         )
         // ws server
         // exmple url: wss://host/ws/bot_username?ws_token=1234567890

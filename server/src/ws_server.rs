@@ -9,12 +9,12 @@ use hyper::{
     Request, Response,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::{
     net::TcpListener,
     sync::broadcast,
     time::{sleep, timeout, Duration},
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{app_state, json};
 
@@ -58,7 +58,9 @@ pub async fn handle_client(
     let mut room_rx = room_tx.subscribe();
     println!(
         "Client {} connected with bot_id: {} (room size: {})",
-        cid, bot_id, room_members_count + 1
+        cid,
+        bot_id,
+        room_members_count + 1
     );
 
     let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
@@ -96,14 +98,30 @@ pub async fn handle_client(
                     _ => {}
                 }
             }
-            Ok((other_cid, msg)) = room_rx.recv() => {
-                if other_cid != cid {
-                    let payload = Payload::Owned(msg);
-                    let frame = Frame::text(payload);
-                    if let Err(e) = ws.write_frame(frame).await {
-                        println!("Error sending message to client {}: {}", cid, e);
+            Ok(msg) = room_rx.recv() => {
+                match msg {
+                    json::RoomMessage::CloseConnection(target_cid) => {
+                        if target_cid == cid {
+                            println!("Received close signal for client {}", target_cid);
+                            let close_frame = Frame::close(1000, b"Server initiated shutdown");
+                            let _ = ws.write_frame(close_frame).await;
+                            break;
+                        }
+                    }
+                    json::RoomMessage::Text(text_data) => {
+                        let frame = Frame::text(Payload::Owned(text_data));
+                        if let Err(e) = ws.write_frame(frame).await {
+                            println!("Error sending message to client {} in room {}: {}", cid, bot_id, e);
+                            break;
+                        }
+                    }
+                    json::RoomMessage::CloseRoom(bot_id) => {
+                        println!("Received close signal for room_id: {}", bot_id);
+                        let close_frame = Frame::close(1000, b"Server initiated shutdown");
+                        let _ = ws.write_frame(close_frame).await;
                         break;
                     }
+                    _ => {}
                 }
             }
             _ = sleep(Duration::from_secs(4)) => {

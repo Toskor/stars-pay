@@ -13,7 +13,7 @@ use crate::{
 };
 use crate::{json, ROOM_CAPACITY};
 
-pub type Rooms = HashMap<String, broadcast::Sender<(usize, Vec<u8>)>>;
+pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UserRole {
@@ -154,7 +154,7 @@ impl AppState {
         let secret_token = api::generate_secret_token();
         api::set_tg_webhook(token, &webhook_url, &secret_token).await?;
 
-        let ws_token = api::generate_ws_token();
+        let ws_token = api::generate_layer_token();
 
         let bot: DBBot = DBBot::new(
             bot_id.to_string(),
@@ -185,7 +185,7 @@ impl AppState {
         let secret_token = api::generate_secret_token();
         // api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
 
-        let ws_token = api::generate_ws_token();
+        let ws_token = api::generate_layer_token();
 
         let bot: DBBot = DBBot::new(
             MAIN_BOT_ID.to_string(),
@@ -435,7 +435,7 @@ impl AppState {
     pub async fn get_or_create_room(
         &self,
         bot_id: &str,
-    ) -> Result<(broadcast::Sender<(usize, Vec<u8>)>, usize)> {
+    ) -> Result<(broadcast::Sender<json::RoomMessage>, usize)> {
         {
             // Hashmap.get() cause RWLock.read()
             let rooms = self.rooms.read().await;
@@ -487,9 +487,22 @@ impl AppState {
     pub async fn send_donation_to_room_members(&self, room_id: String, donation: Vec<u8>) {
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(&room_id) {
-            // 0 is primary cid, no one will have same cid
-            tx.send((0, donation)).unwrap();
+            tx.send(json::RoomMessage::Text(donation)).unwrap();
         }
+    }
+
+    pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
+        // let bot = self.db.get_bot(bot_id).await?;
+        let layer_token = api::generate_layer_token();
+        self.db
+            .update_bot_layer_token(bot_id.to_string(), layer_token)
+            .await?;
+
+        let rooms = self.rooms.read().await;
+        if let Some(tx) = rooms.get(&bot_id) {
+            tx.send(json::RoomMessage::CloseRoom(bot_id)).unwrap();
+        }
+        Ok(())
     }
 }
 

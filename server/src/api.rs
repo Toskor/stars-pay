@@ -7,7 +7,7 @@ use hyper::{header, HeaderMap, StatusCode};
 pub fn generate_secret_token() -> String {
     uuid::Uuid::new_v4().to_string()
 }
-pub fn generate_ws_token() -> String {
+pub fn generate_layer_token() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 pub fn get_tg_api_url(token: &str) -> String {

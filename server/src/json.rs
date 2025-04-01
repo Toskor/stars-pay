@@ -252,6 +252,18 @@ pub struct WSConnectionParams {
     pub ws_token: String,
 }
 
+#[derive(Deserialize)]
+pub struct RefreshLayerTokenQueryParams {
+    pub target_bot_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RoomMessage {
+    Text(Vec<u8>),
+    CloseConnection(usize),
+    CloseRoom(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

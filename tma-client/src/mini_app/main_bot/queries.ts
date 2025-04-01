@@ -213,6 +213,19 @@ class ApiClient {
       body: JSON.stringify({ target_bot_id: bot_id, app_config: config }),
     });
   }
+
+  async refreshLayerToken(
+    initData: string,
+    bot_id: string,
+  ): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/refreshLayerToken", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ target_bot_id: bot_id }),
+    });
+  }
 }
 
 const api = new ApiClient(
@@ -229,3 +242,4 @@ export const changeBotToken = api.changeBotToken.bind(api);
 export const addBot = api.addBot.bind(api);
 export const getConfig = api.getConfig.bind(api);
 export const updateConfig = api.updateConfig.bind(api);
+export const refreshLayerToken = api.refreshLayerToken.bind(api);

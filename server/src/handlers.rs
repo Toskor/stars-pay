@@ -852,6 +852,47 @@ pub async fn change_bot_token(
     }
 }
 
+pub async fn refresh_layer_token(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::RefreshLayerTokenQueryParams>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(MAIN_BOT_ID, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                if user.id == bot.owner || bot.admins.contains(&user.id) {
+                    return Some(());
+                }
+            }
+            None
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(_)) => {
+            let res = state.refresh_layer_token(payload.target_bot_id).await;
+            match res {
+                Ok(()) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "success"})),
+                ),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
 pub async fn get_bot_ws_token(
     headers: HeaderMap,
     Path(bot_id): Path<String>,

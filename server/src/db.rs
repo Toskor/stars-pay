@@ -51,6 +51,7 @@ impl DataBase {
         let conn = Connection::open(path).await?;
 
         conn.call(move |conn| {
+            //todo rename ws_token to layer_token
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS bots (
                 id              TEXT PRIMARY KEY NOT NULL,
@@ -448,6 +449,19 @@ impl DataBase {
             conn.execute(
                 "UPDATE bots SET token = :token WHERE id = :id",
                 named_params! { ":token": &new_token, ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_bot_layer_token(&self, bot_id: String, layer_token: String) -> Result<()> {
+        let conn = &self.conn;
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET ws_token = :ws_token WHERE id = :id",
+                named_params! { ":ws_token": &layer_token, ":id": &bot_id },
             )?;
             Ok::<(), async_rusqlite::Error>(())
         })
