@@ -240,6 +240,7 @@ pub struct DonationButton {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WSDonationEvent {
+    pub ok: bool,
     ///@username
     pub from: String,
     //currency: always TgStars,

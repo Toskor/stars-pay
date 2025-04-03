@@ -44,8 +44,9 @@ pub async fn handle_client(
 
             let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
 
-            let error_msg =
-                format!("{{\"error\": \"maxout: {bot_id} already has maximum clients\"}}");
+            let error_msg = format!(
+                "{{\"ok\": false, \"error\": \"maxout: {bot_id} already has maximum clients\"}}"
+            );
             let frame = Frame::text(Payload::Owned(error_msg.into_bytes()));
 
             let _ = ws.write_frame(frame).await;
@@ -65,24 +66,29 @@ pub async fn handle_client(
 
     let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
     let mut tmp_buf = vec![];
-    let mut last_ping_time = std::time::Instant::now();
+    let mut last_handshake_time = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
             Ok(frame) = ws.read_frame() => {
+                println!("OpCode: {:?}", frame.opcode);
                 match frame.opcode {
                     OpCode::Close => {
                         println!("OpCode::Close received from client {}", cid);
                         break;
                     }
                     OpCode::Ping => {
+                        println!("OpCode::Ping received from client {}", cid);
+                        last_handshake_time = tokio::time::Instant::now();
                         let pong = Frame::pong(frame.payload);
                         let _res = ws.write_frame(pong).await;
                     }
                     OpCode::Pong => {
-                        last_ping_time = std::time::Instant::now();
+                        println!("OpCode::Pong received from client {}", cid);
+                        last_handshake_time = tokio::time::Instant::now();
                     }
                     OpCode::Text => {
+                        last_handshake_time = tokio::time::Instant::now();
                         let text = String::from_utf8(frame.payload.to_vec()).unwrap();
 
                         let response = EchoResponse {
@@ -125,7 +131,7 @@ pub async fn handle_client(
                 }
             }
             _ = sleep(Duration::from_secs(4)) => {
-                if last_ping_time.elapsed() < Duration::from_secs(8) {
+                if last_handshake_time.elapsed() < Duration::from_secs(8) {
                     let ping = Frame::new(true, OpCode::Ping, None, Payload::Borrowed(b""));
                     if let Err(e) = ws.write_frame(ping).await {
                         println!("Error sending ping: {}", e);

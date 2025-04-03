@@ -95,9 +95,10 @@ async fn main() {
         async move {
             loop {
                 let msg = json::WSDonationEvent {
-                    from: "test".to_string(),
+                    ok: true,
+                    from: "username".to_string(),
                     total_amount: 100,
-                    invoice_payload: "test".to_string(),
+                    invoice_payload: "https://i.giphy.com/media/3oEjI6SIIHBdRx6PBI/giphy.gif".to_string(),
                 };
 
                 arc_app_state
@@ -106,10 +107,18 @@ async fn main() {
                         serde_json::to_vec(&msg).unwrap(),
                     )
                     .await;
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
             }
         }
     });
+
+    // let _test_task_2 = tokio::spawn({
+    //     let arc_app_state = arc_app_state.clone();
+    //     async move {
+    //         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    //         arc_app_state.refresh_layer_token("star_donation".to_string()).await.unwrap();
+    //     }
+    // });
 
     // let _channel_keeper = event_tx.subscribe();
     tokio::signal::ctrl_c().await.unwrap();

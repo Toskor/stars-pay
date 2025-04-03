@@ -492,7 +492,6 @@ impl AppState {
     }
 
     pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
-        // let bot = self.db.get_bot(bot_id).await?;
         let layer_token = api::generate_layer_token();
         self.db
             .update_bot_layer_token(bot_id.to_string(), layer_token)

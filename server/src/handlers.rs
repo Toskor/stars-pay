@@ -1045,6 +1045,7 @@ pub async fn parse_update(
                 // println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
 
                 let ws_donation_event = json::WSDonationEvent {
+                    ok: true,
                     from: pre_checkout_query.from.username.clone(),
                     total_amount: pre_checkout_query.total_amount,
                     invoice_payload: pre_checkout_query.invoice_payload.clone(),
