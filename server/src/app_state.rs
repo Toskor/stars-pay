@@ -11,7 +11,7 @@ use crate::{
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
     CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
 };
-use crate::{json, ROOM_CAPACITY};
+use crate::{json, HTML_LAYER, ROOM_CAPACITY};
 
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
@@ -109,6 +109,43 @@ impl AppState {
 
         //without main bot
         self.update_mini_app_sources().await.unwrap();
+
+        self.update_layer_source(
+            "star_donation".to_string(),
+            self.generate_layer_url("star_donation".to_string())
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let token = self
+            .get_bot_token("star_donation".to_string())
+            .await
+            .unwrap();
+        api::set_bot_commands(
+            &token,
+            &vec![
+                json::BotCommand {
+                    command: "start".to_string(),
+                    description: "Start the bot".to_string(),
+                },
+                json::BotCommand {
+                    command: "help".to_string(),
+                    description: "Get help".to_string(),
+                },
+                json::BotCommand {
+                    command: "donate".to_string(),
+                    description: "Donate to the bot".to_string(),
+                },
+                json::BotCommand {
+                    command: "layer".to_string(),
+                    description: "Get layer url".to_string(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
         Ok(())
     }
 
@@ -153,6 +190,29 @@ impl AppState {
         let webhook_url = format!("{api_url}webhook");
         let secret_token = api::generate_secret_token();
         api::set_tg_webhook(token, &webhook_url, &secret_token).await?;
+
+        api::set_bot_commands(
+            token,
+            &vec![
+                json::BotCommand {
+                    command: "start".to_string(),
+                    description: "Start the bot".to_string(),
+                },
+                json::BotCommand {
+                    command: "help".to_string(),
+                    description: "Get help".to_string(),
+                },
+                json::BotCommand {
+                    command: "donate".to_string(),
+                    description: "Donate to the bot".to_string(),
+                },
+                json::BotCommand {
+                    command: "layer".to_string(),
+                    description: "Get layer url".to_string(),
+                },
+            ],
+        )
+        .await?;
 
         let ws_token = api::generate_layer_token();
 
@@ -228,6 +288,47 @@ impl AppState {
             .await?;
 
         self.db.update_bot_config(bot_id, app_config).await?;
+
+        Ok(())
+    }
+
+    pub async fn generate_layer_url(&self, bot_id: String) -> Result<String> {
+        let t = self
+            .get_bot_ws_token(bot_id.clone())
+            .await?
+            .chars()
+            .nth(0)
+            .unwrap()
+            .to_string();
+        let domain = dotenv!("DOMAIN");
+        let layer_url = format!("{domain}/{bot_id}/layer?t={t}");
+
+        Ok(layer_url)
+    }
+
+    pub async fn generate_layer_url_with_t(&self, bot_id: String, t: String) -> Result<String> {
+        let domain = dotenv!("DOMAIN");
+        let layer_url = format!("{domain}/{bot_id}/layer?t={t}");
+
+        Ok(layer_url)
+    }
+
+    pub async fn update_layer_source(&self, bot_id: String, layer_url: String) -> Result<()> {
+        let path = format!("server/src/layer_sources/{}.html", bot_id);
+
+        let html = HTML_LAYER.to_string().replace(
+            r#"{"json_to_replace":""}"#,
+            &format!(r#"{{"ws_url": "{}"}}"#, layer_url),
+        );
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(&path)
+            .await?;
+
+        file.write_all(html.as_bytes()).await?;
 
         Ok(())
     }
@@ -491,8 +592,11 @@ impl AppState {
         }
     }
 
-    pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
+    pub async fn refresh_layer_token(&self, bot_id: String) -> Result<String> {
         let layer_token = api::generate_layer_token();
+        //t for layer url
+        let t = layer_token.chars().nth(0).unwrap().to_string();
+
         self.db
             .update_bot_layer_token(bot_id.to_string(), layer_token)
             .await?;
@@ -501,7 +605,8 @@ impl AppState {
         if let Some(tx) = rooms.get(&bot_id) {
             tx.send(json::RoomMessage::CloseRoom(bot_id)).unwrap();
         }
-        Ok(())
+
+        Ok(t)
     }
 }
 

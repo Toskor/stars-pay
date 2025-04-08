@@ -27,6 +27,21 @@ pub struct Message {
     pub message_id: u64,
     pub text: Option<String>,
     pub chat: Option<MessageChat>,
+    pub entities: Option<Vec<MessageEntity>>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct MessageEntity {
+    #[serde(rename = "type")]
+    pub entity_type: String,
+    pub offset: u64,
+    pub length: u64,
+    ///For “text_link” only, URL that will be opened after user taps on the text
+    pub url: Option<String>,
+    ///For “text_mention” only, the mentioned user
+    pub user: Option<UserInfoResult>,
+    ///For “pre” only, the programming language of the entity text
+    pub language: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -263,6 +278,17 @@ pub enum RoomMessage {
     Text(Vec<u8>),
     CloseConnection(usize),
     CloseRoom(String),
+}
+
+#[derive(Deserialize)]
+pub struct LayerQueryParams {
+    pub t: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct BotCommand {
+    pub command: String,
+    pub description: String,
 }
 
 #[cfg(test)]

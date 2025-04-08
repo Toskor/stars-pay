@@ -58,28 +58,30 @@ pub async fn get_webhook_info(tg_api_url: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn set_bot_commands(tg_api_url: &str) -> Result<()> {
-    // can add language_code
-    let commands = serde_json::json!([
-        {
-            "command": "start",
-            "description": "Запустить бота"
-        },
-        {
-            "command": "help",
-            "description": "Получить помощь"
-        }
-    ]);
-    let commands_str = serde_json::to_string(&commands).unwrap();
+///has delayed effect (5 min) after success call
+pub async fn set_bot_commands(token: &str, commands: &Vec<json::BotCommand>) -> Result<()> {
+    // mb add language_code
+    let tg_api_url = get_tg_api_url(token);
+
+    let commands_json = serde_json::json!({
+        "commands": commands
+    });
+    let commands_str = serde_json::to_string(&commands_json).unwrap();
 
     let uri = hyper::Uri::from_str(&format!("{}setMyCommands", tg_api_url)).unwrap();
 
-    let res = integrations::http::post(&uri, None, commands_str).await?;
+    let headers = HeaderMap::from_iter([(
+        header::CONTENT_TYPE,
+        hyper::header::HeaderValue::from_bytes("application/json".as_bytes()).unwrap(),
+    )]);
+
+    let res = integrations::http::post(&uri, Some(&headers), commands_str).await?;
+    println!("set_bot_commands after post");
 
     if res.status != StatusCode::OK {
         println!("bad status {}", res.status);
     } else {
-        println!("{}", res.to_str().unwrap())
+        // println!("{}", res.to_str().unwrap())
     }
 
     Ok(())

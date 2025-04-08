@@ -5,7 +5,7 @@ use axum::{
     Router,
 };
 use handlers::{
-    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice, fetch_user_bots, get_bot_ws_token, mini_app, refresh_layer_token, remove_bot, remove_bot_admin, update_config, webhook_handler, ws_handler
+    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice, fetch_user_bots, get_bot_ws_token, layer, mini_app, refresh_layer_token, remove_bot, remove_bot_admin, update_config, webhook_handler, ws_handler
 };
 
 use main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
@@ -32,6 +32,7 @@ const PATH_TO_DIST: &str = "../../tma-client/dist/src/pages";
 const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
 const HTML_MAIN_BOT_MINI_APP: &str =
     include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
+const HTML_LAYER: &str = include_str!("../../tma-client/dist/src/pages/layer.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
@@ -54,6 +55,7 @@ async fn main() {
         .route("/:bot_id/createInvoice", post(create_invoice))
         .route("/:bot_id/avatar/:user_id", get(avatar_url_handler))
         .route("/:bot_id/config", post(config_handler))
+        .route("/:bot_id/layer", get(layer))
         //only for owner and admins
         .route("/:bot_id/updateConfig", post(update_config))
         //only for owner and admins
