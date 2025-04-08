@@ -870,12 +870,26 @@ pub async fn refresh_layer_token(
 
     match security_check {
         Ok(Some(_)) => {
-            let res = state.refresh_layer_token(payload.target_bot_id).await;
+            let res = state
+                .refresh_layer_token(payload.target_bot_id.clone())
+                .await;
+
             match res {
-                Ok(()) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"status": "success"})),
-                ),
+                Ok(t) => {
+                    let layer_url = state
+                        .generate_layer_url_with_t(payload.target_bot_id.clone(), t)
+                        .await
+                        .unwrap();
+
+                    state
+                        .update_layer_source(payload.target_bot_id, layer_url)
+                        .await;
+
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({"status": "success"})),
+                    )
+                }
                 Err(e) => (
                     StatusCode::BAD_REQUEST,
                     Json(serde_json::json!({"error": e.to_string()})),
@@ -973,6 +987,75 @@ pub async fn ws_handler(
     }
 }
 
+pub async fn layer(
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+    Query(params): Query<json::LayerQueryParams>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(&bot_id, |bot| {
+            //ws_token is uuid
+            //if first char of ws_token is equal to param t
+            if bot.ws_token.chars().nth(0).unwrap().to_string() == params.t {
+                Some(())
+            } else {
+                None
+            }
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(_)) => {
+            let path = format!("server/src/layer_sources/{}.html", bot_id);
+
+            //if file does not exist need to update_layer_source and then try to open
+            let file = match File::open(&path).await {
+                Ok(file) => Ok(file),
+                Err(_) => {
+                    let layer_url = state.generate_layer_url(bot_id.clone()).await.unwrap();
+                    state
+                        .update_layer_source(bot_id.clone(), layer_url)
+                        .await
+                        .unwrap();
+                    File::open(path).await
+                }
+            };
+
+            match file {
+                Ok(file) => {
+                    let stream = ReaderStream::new(file);
+                    let body = axum::body::Body::from_stream(stream);
+
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                        .body(body)
+                        .unwrap()
+                }
+                Err(err) => {
+                    return Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Body::from(format!("Not found: {}", err)))
+                        .unwrap();
+                }
+            }
+        }
+        Ok(None) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from("Security check failure"))
+                .unwrap();
+        }
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(e.to_string()))
+                .unwrap();
+        }
+    }
+}
+
 // #[axum::debug_handler]
 pub async fn webhook_handler(
     headers: HeaderMap,
@@ -1030,6 +1113,7 @@ pub async fn parse_update(
     bot_id: String,
 ) -> Result<Value> {
     let tg_api_url = api::get_tg_api_url(token);
+    println!("parse_update: {:?}", update);
     match &update.data {
         json::UpdateData::PreCheckoutQuery(pre_checkout_query) => {
             let checkout_id = &pre_checkout_query.id;
@@ -1060,6 +1144,7 @@ pub async fn parse_update(
             }
         }
         json::UpdateData::Message(message) => {
+            
             if let (Some(text), Some(chat)) = (message.text.as_deref(), message.chat.as_ref()) {
                 let chat_id = chat.id;
 

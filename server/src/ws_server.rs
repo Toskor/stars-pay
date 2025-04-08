@@ -78,13 +78,13 @@ pub async fn handle_client(
                         break;
                     }
                     OpCode::Ping => {
-                        println!("OpCode::Ping received from client {}", cid);
+                        // println!("OpCode::Ping received from client {}", cid);
                         last_handshake_time = tokio::time::Instant::now();
                         let pong = Frame::pong(frame.payload);
                         let _res = ws.write_frame(pong).await;
                     }
                     OpCode::Pong => {
-                        println!("OpCode::Pong received from client {}", cid);
+                        // println!("OpCode::Pong received from client {}", cid);
                         last_handshake_time = tokio::time::Instant::now();
                     }
                     OpCode::Text => {

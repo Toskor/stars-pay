@@ -26,6 +26,11 @@ export class WSClient {
   private lastPongTime = 0;
   private readonly config: WSConfig;
   private messageCallback: ((message: WSMessage) => void) | null = null;
+  private lastPingTime = 0;
+  //for sending ping message
+  private pingTimeout: number | null = null;
+  //for
+  private readonly PING_TIMEOUT = 8000;
 
   constructor(config: WSConfig) {
     this.config = config;
@@ -42,20 +47,21 @@ export class WSClient {
 
         this.ws.onopen = () => {
           console.log("WebSocket connected");
+          this.reconnectDelay = 1000;
           this.reconnectAttempts = 0;
-          this.startPingInterval();
+          // this.startPingInterval();
           resolve();
         };
 
         this.ws.onclose = (event) => {
           console.log("WebSocket closed:", event.code, event.reason);
-          this.stopPingInterval();
+          // this.stopPingInterval();
           this.handleReconnect();
         };
 
         this.ws.onerror = (error) => {
           console.error("WebSocket error:", error);
-          this.stopPingInterval();
+          // this.stopPingInterval();
           reject(error);
         };
 
@@ -80,20 +86,20 @@ export class WSClient {
     });
   }
 
-  private startPingInterval() {
-    this.pingInterval = window.setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "ping" }));
-      }
-    }, 1000);
-  }
+  // private startPingInterval() {
+  //   this.pingInterval = window.setInterval(() => {
+  //     if (this.ws?.readyState === WebSocket.OPEN) {
+  //       this.ws.send(JSON.stringify({ type: "ping" }));
+  //     }
+  //   }, 6000);
+  // }
 
-  private stopPingInterval() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-  }
+  // private stopPingInterval() {
+  //   if (this.pingInterval) {
+  //     clearInterval(this.pingInterval);
+  //     this.pingInterval = null;
+  //   }
+  // }
 
   private handleReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -106,7 +112,8 @@ export class WSClient {
         this.connect().catch((error) => {
           console.error("Reconnection failed:", error);
         });
-      }, this.reconnectDelay * this.reconnectAttempts);
+      }, this.reconnectDelay);
+      this.reconnectDelay *= 2;
     } else {
       console.error("Max reconnection attempts reached");
     }
@@ -128,7 +135,7 @@ export class WSClient {
   }
 
   public disconnect() {
-    this.stopPingInterval();
+    // this.stopPingInterval();
     if (this.ws) {
       this.ws.close(1000, "Client initiated disconnect");
       this.ws = null;

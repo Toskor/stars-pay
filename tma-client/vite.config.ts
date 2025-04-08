@@ -4,18 +4,24 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { resolve } from "path";
 
-const target = process.env.TARGET ?? "main_bot_mini_app";
+const target = process.env.TARGET || "main_bot_mini_app";
 const isDev = process.env.NODE_ENV === "development";
 
-var input = {
-  main_bot_mini_app: resolve(__dirname, "src/pages/main_bot_mini_app.html"),
-};
+var input = {};
 
-if (target === "mini_app") {
+if (target === "main_bot_mini_app") {
   input = {
-    //@ts-ignore
+    main_bot_mini_app: resolve(__dirname, "src/pages/main_bot_mini_app.html"),
+  };
+} else if (target === "mini_app") {
+  input = {
     mini_app: resolve(__dirname, "src/pages/mini_app.html"),
   };
+} else if (target === "layer") {
+  input = {
+    layer: resolve(__dirname, "src/pages/layer.html"),
+  };
+  console.log(input);
 }
 
 const fileGenerationConfig = {
