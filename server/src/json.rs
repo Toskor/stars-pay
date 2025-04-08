@@ -28,6 +28,7 @@ pub struct Message {
     pub text: Option<String>,
     pub chat: Option<MessageChat>,
     pub entities: Option<Vec<MessageEntity>>,
+
 }
 
 #[derive(Deserialize, Debug)]

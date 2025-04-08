@@ -1013,7 +1013,7 @@ pub async fn layer(
             let file = match File::open(&path).await {
                 Ok(file) => Ok(file),
                 Err(_) => {
-                    let layer_url = state.generate_layer_url(bot_id.clone()).await.unwrap();
+                    let layer_url = state.generate_layer_url(&bot_id).await.unwrap();
                     state
                         .update_layer_source(bot_id.clone(), layer_url)
                         .await
@@ -1113,7 +1113,7 @@ pub async fn parse_update(
     bot_id: String,
 ) -> Result<Value> {
     let tg_api_url = api::get_tg_api_url(token);
-    println!("parse_update: {:?}", update);
+    // println!("parse_update: {:?}", update);
     match &update.data {
         json::UpdateData::PreCheckoutQuery(pre_checkout_query) => {
             let checkout_id = &pre_checkout_query.id;
@@ -1144,8 +1144,19 @@ pub async fn parse_update(
             }
         }
         json::UpdateData::Message(message) => {
-            
-            if let (Some(text), Some(chat)) = (message.text.as_deref(), message.chat.as_ref()) {
+            let is_command = message.entities.as_ref().map_or(false, |entities| {
+                entities
+                    .iter()
+                    .any(|entity| entity.entity_type == "bot_command")
+            });
+
+            let ans_text = if is_command {
+                parse_bot_command(&message, state, &bot_id).await?
+            } else {
+                parse_message(&message, state, &bot_id).await?
+            };
+
+            if let Some(chat) = message.chat.as_ref() {
                 let chat_id = chat.id;
 
                 let inline_keyboard = serde_json::json!({
@@ -1156,9 +1167,10 @@ pub async fn parse_update(
                         }]
                     ]
                 });
+
                 let ans = serde_json::json!({
                     // "method": "sendMessage", // field for webhook ans
-                    "text": text,
+                    "text": ans_text,
                     "chat_id": chat_id,
                     "reply_markup": inline_keyboard,
                 });
@@ -1169,18 +1181,63 @@ pub async fn parse_update(
                     hyper::header::HeaderValue::from_static("application/json"),
                 )]);
 
-                let res = http::post(&uri, Some(&headers), ans.to_string()).await?;
-                // if res.status == StatusCode::OK {
-                //     println!("sendMessage res: {}", res.to_str().unwrap());
-                // } else {
-                //     println!("sendMessage error: {}", res.to_str().unwrap());
-                // }
+                let _res = http::post(&uri, Some(&headers), ans.to_string()).await?;
             }
         }
         _ => {}
     }
 
     Ok(Value::Null)
+}
+
+async fn parse_bot_command(
+    message: &json::Message,
+    state: &Arc<AppState>,
+    bot_id: &str,
+) -> Result<String> {
+    //find first command that has type bot_command
+    let command = message
+        .entities
+        .as_ref()
+        .and_then(|entities| {
+            entities
+                .iter()
+                .find(|entity| entity.entity_type == "bot_command")
+        })
+        .map(|entity| entity);
+
+    if let Some(command) = command {
+        let command_text = message
+            .text
+            .as_ref()
+            .unwrap()
+            .chars()
+            .skip(command.offset as usize)
+            .take(command.length as usize)
+            .collect::<String>();
+
+        match command_text.as_str() {
+            "/start" => Ok("start".to_string()),
+            "/help" => Ok("help".to_string()),
+            "/donate" => Ok("donate".to_string()),
+            "/layer" => {
+                let layer_url = state.generate_layer_url(bot_id).await.unwrap();
+                Ok(layer_url)
+            }
+            _ => Err(anyhow::anyhow!("Unknown command")),
+        }
+    } else {
+        Err(anyhow::anyhow!("No command found"))
+    }
+}
+
+async fn parse_message(
+    message: &json::Message,
+    state: &Arc<AppState>,
+    bot_id: &str,
+) -> Result<String> {
+    let text = message.text.as_ref().unwrap();
+    Ok(text.to_string())
 }
 
 fn check_secret_token(secret_token: &str, headers: &HeaderMap) -> bool {

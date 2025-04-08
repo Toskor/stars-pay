@@ -112,40 +112,13 @@ impl AppState {
 
         self.update_layer_source(
             "star_donation".to_string(),
-            self.generate_layer_url("star_donation".to_string())
+            self.generate_layer_url("star_donation")
                 .await
                 .unwrap(),
         )
         .await
         .unwrap();
 
-        let token = self
-            .get_bot_token("star_donation".to_string())
-            .await
-            .unwrap();
-        api::set_bot_commands(
-            &token,
-            &vec![
-                json::BotCommand {
-                    command: "start".to_string(),
-                    description: "Start the bot".to_string(),
-                },
-                json::BotCommand {
-                    command: "help".to_string(),
-                    description: "Get help".to_string(),
-                },
-                json::BotCommand {
-                    command: "donate".to_string(),
-                    description: "Donate to the bot".to_string(),
-                },
-                json::BotCommand {
-                    command: "layer".to_string(),
-                    description: "Get layer url".to_string(),
-                },
-            ],
-        )
-        .await
-        .unwrap();
         Ok(())
     }
 
@@ -292,16 +265,16 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn generate_layer_url(&self, bot_id: String) -> Result<String> {
+    pub async fn generate_layer_url(&self, bot_id: &str) -> Result<String> {
         let t = self
-            .get_bot_ws_token(bot_id.clone())
+            .get_bot_ws_token(bot_id.to_string())
             .await?
             .chars()
             .nth(0)
             .unwrap()
             .to_string();
         let domain = dotenv!("DOMAIN");
-        let layer_url = format!("{domain}/{bot_id}/layer?t={t}");
+        let layer_url = format!("{domain}{bot_id}/layer?t={t}");
 
         Ok(layer_url)
     }
