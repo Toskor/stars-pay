@@ -19,6 +19,9 @@
 
 */
 
+  let layer_json= `{"json_to_replace":""}`;
+  console.log("layer_json", layer_json);
+
   let layer_json_config =
     '{"ws_url": "wss://advanced-oddly-herring.ngrok-free.app/ws/star_donation_bot?ws_token=782cecc0-0e17-42f6-8625-4361c92ab553"}';
   let test_gif_url = "https://i.giphy.com/media/3oEjI6SIIHBdRx6PBI/giphy.gif";

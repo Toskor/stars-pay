@@ -11,6 +11,9 @@ TARGET="main_bot_mini_app" bun run build
 echo "mini_app"
 TARGET="mini_app" bun run build
 
+echo "layer"
+TARGET="layer" bun run build
+
 echo "Build complete!"
 
 cd ..
