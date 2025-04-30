@@ -9,7 +9,6 @@ use axum::{
 use fastwebsockets::upgrade;
 use hmac::{Hmac, Mac};
 use hyper::{header, HeaderMap, StatusCode, Uri};
-use integrations::http;
 use serde_json::Value;
 use sha2::Sha256;
 use std::{collections::HashMap, str::FromStr, sync::Arc};
@@ -19,12 +18,7 @@ use tower::{Service, ServiceExt};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    api::{self, bot_numeric_id_from_token},
-    app_state::get_bot_id_from_username,
-    json,
-    main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
-    ws_server::{self, handle_client},
-    AppState, HTML_MINI_APP,
+    api::{self, bot_numeric_id_from_token}, app_state::get_bot_id_from_username, http, json, main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN}, ws_server::{self, handle_client}, AppState, HTML_MINI_APP
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
@@ -725,7 +719,7 @@ pub async fn avatar_url_handler(
             };
 
             // Download the image
-            match integrations::http::get(&uri, None).await {
+            match http::get(&uri, None).await {
                 Ok(response) => {
                     if response.status != StatusCode::OK {
                         return Response::builder()

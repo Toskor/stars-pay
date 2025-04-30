@@ -2,10 +2,9 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use hyper::{HeaderMap, Uri};
-use integrations::http;
 use serde_json::Value;
 
-use crate::{api, json};
+use crate::{api, http, json};
 
 pub const MAIN_BOT_ID: &str = "stardonationservice";
 pub const MAIN_BOT_TOKEN: &str = "***REMOVED***";
@@ -70,7 +69,7 @@ pub async fn get_full_user(user_id: &str, tg_api_url: &str) -> Result<()> {
     });
 
     // let res = integrations::http::post(&uri, None, body.to_string()).await?;
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
 
     println!("{}", res.to_str().unwrap());
     Ok(())

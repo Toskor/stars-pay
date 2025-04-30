@@ -36,5 +36,10 @@ http-body-util = { version = "0.1" }
 hyper-util = { version = "0.1", features = ["tokio"] }
 
 #dont add kick feature
-integrations = { path = "../../yoml/integrations", features = []}
+#integrations = { path = "../../yoml/integrations", features = ["]}
 
+#for http.rs
+futures = { version = "0.3" }
+async-compression = { version = "0.4", features = ["gzip", "tokio"] }
+bytes = { version = "1.5"}
+tokio-native-tls = "0.3"

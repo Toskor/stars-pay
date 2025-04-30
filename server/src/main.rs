@@ -5,7 +5,9 @@ use axum::{
     Router,
 };
 use handlers::{
-    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice, fetch_user_bots, get_bot_ws_token, layer, mini_app, refresh_layer_token, remove_bot, remove_bot_admin, update_config, webhook_handler, ws_handler
+    add_bot, add_bot_admin, avatar_url_handler, change_bot_token, config_handler, create_invoice,
+    fetch_user_bots, get_bot_ws_token, layer, mini_app, refresh_layer_token, remove_bot,
+    remove_bot_admin, update_config, webhook_handler, ws_handler,
 };
 
 use main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
@@ -24,6 +26,7 @@ mod api;
 pub mod app_state;
 pub mod db;
 mod handlers;
+mod http;
 pub mod json;
 pub mod main_bot;
 pub mod ws_server;
@@ -92,7 +95,7 @@ async fn main() {
         axum::serve(listener, app).await.unwrap();
     });
 
-    let _test_task = tokio::spawn({
+    let _test_layer_task = tokio::spawn({
         let arc_app_state = arc_app_state.clone();
         async move {
             loop {
@@ -100,7 +103,8 @@ async fn main() {
                     ok: true,
                     from: "username".to_string(),
                     total_amount: 100,
-                    invoice_payload: "https://i.giphy.com/media/3oEjI6SIIHBdRx6PBI/giphy.gif".to_string(),
+                    invoice_payload: "https://i.giphy.com/media/3oEjI6SIIHBdRx6PBI/giphy.gif"
+                        .to_string(),
                 };
 
                 arc_app_state

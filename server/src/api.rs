@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::{json, WEBHOOK_ALLOWED_UPDATES};
+use crate::{http, json, WEBHOOK_ALLOWED_UPDATES};
 use anyhow::Result;
 use hyper::{header, HeaderMap, StatusCode};
 
@@ -32,7 +32,7 @@ pub async fn set_tg_webhook(token: &str, webhook_url: &str, secret_token: &str) 
 
     let uri = hyper::Uri::from_str(&format!("{}setWebhook?{url_param}", tg_api_url)).unwrap();
 
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
 
     if res.status == StatusCode::OK {
         // println!("{}", res.to_str().unwrap());
@@ -47,7 +47,7 @@ pub async fn set_tg_webhook(token: &str, webhook_url: &str, secret_token: &str) 
 pub async fn get_webhook_info(tg_api_url: &str) -> Result<()> {
     let uri = hyper::Uri::from_str(&format!("{}getWebhookInfo", tg_api_url)).unwrap();
 
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
 
     if res.status != StatusCode::OK {
         println!("bad status {}", res.status);
@@ -75,7 +75,7 @@ pub async fn set_bot_commands(token: &str, commands: &Vec<json::BotCommand>) -> 
         hyper::header::HeaderValue::from_bytes("application/json".as_bytes()).unwrap(),
     )]);
 
-    let res = integrations::http::post(&uri, Some(&headers), commands_str).await?;
+    let res = http::post(&uri, Some(&headers), commands_str).await?;
     println!("set_bot_commands after post");
 
     if res.status != StatusCode::OK {
@@ -123,7 +123,7 @@ pub async fn create_invoice_link(
 
     let uri = hyper::Uri::from_str(&format!("{}createInvoiceLink", tg_api_url)).unwrap();
 
-    let res = integrations::http::post(&uri, Some(&headers), body_str).await?;
+    let res = http::post(&uri, Some(&headers), body_str).await?;
     // println!("{}", res.to_str().unwrap());
 
     if res.status != StatusCode::OK {
@@ -157,7 +157,7 @@ pub async fn set_menu_button(token: &str, button_text: &str, button_url: &str) -
         hyper::header::HeaderValue::from_bytes("application/json".as_bytes()).unwrap(),
     )]);
 
-    let res = integrations::http::post(&uri, Some(&headers), body_str).await?;
+    let res = http::post(&uri, Some(&headers), body_str).await?;
     // println!("{}", res.to_str().unwrap());
     if res.status == StatusCode::OK {
         Ok(())
@@ -171,7 +171,7 @@ pub async fn get_bot_info(token: &str) -> Result<json::BotInfo> {
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getMe", tg_api_url)).unwrap();
 
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
 
     let json: json::BotInfo = res.to_json()?;
     Ok(json)
@@ -182,7 +182,7 @@ pub async fn get_user_info(token: &str, user_id: u64) -> Result<json::UserInfo> 
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getChat?chat_id={}", tg_api_url, user_id)).unwrap();
 
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
     let user_info: json::UserInfo = res.to_json()?;
 
     Ok(user_info)
@@ -197,7 +197,7 @@ async fn get_user_profile_photos(token: &str, user_id: u64) -> Result<json::User
     ))
     .unwrap();
 
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
 
     if res.status == StatusCode::OK {
         Ok(res.to_json()?)
@@ -211,7 +211,7 @@ async fn get_file_url(token: &str, file_id: &str) -> Result<String> {
     let tg_api_url = get_tg_api_url(token);
     let uri = hyper::Uri::from_str(&format!("{}getFile?file_id={}", tg_api_url, file_id)).unwrap();
 
-    let res = integrations::http::get(&uri, None).await?;
+    let res = http::get(&uri, None).await?;
 
     if res.status == StatusCode::OK {
         let file_info: json::FileResponse = res.to_json()?;
