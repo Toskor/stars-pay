@@ -262,6 +262,7 @@ pub struct WSDonationEvent {
     //currency: always TgStars,
     pub total_amount: u32,
     pub invoice_payload: String,
+    pub message: String,
 }
 
 #[derive(Debug, Deserialize)]

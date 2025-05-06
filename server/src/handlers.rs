@@ -1127,6 +1127,7 @@ pub async fn parse_update(
                     from: pre_checkout_query.from.username.clone(),
                     total_amount: pre_checkout_query.total_amount,
                     invoice_payload: pre_checkout_query.invoice_payload.clone(),
+                    message: "some message".to_string(),
                 };
 
                 state
@@ -1287,6 +1288,23 @@ fn check_hash(init_data: &str, token: &str) -> Option<json::WebAppUser> {
     }
 
     None
+}
+
+//handle test cdn
+pub async fn sound_handler(
+    Path(sound_name): Path<String>,
+) -> impl IntoResponse {
+    let sound_path = format!("server/src/sounds/{}", sound_name);
+
+    let file = File::open(sound_path).await.unwrap();
+    let stream = ReaderStream::new(file);
+    let body = axum::body::Body::from_stream(stream);
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "audio/mpeg")
+        .body(body)
+        .unwrap()
 }
 
 #[cfg(test)]

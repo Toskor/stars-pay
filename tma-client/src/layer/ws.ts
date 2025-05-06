@@ -10,6 +10,7 @@ export type WSMessage =
       total_amount: number;
       //mb url for image
       invoice_payload: string;
+      message: string;
     }
   | {
       ok: false;
@@ -54,13 +55,13 @@ export class WSClient {
         };
 
         this.ws.onclose = (event) => {
-          console.log("WebSocket closed:", event.code, event.reason);
+          // console.log("WebSocket closed:", event.code, event.reason);
           // this.stopPingInterval();
           this.handleReconnect();
         };
 
         this.ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
+          // console.error("WebSocket error:", error);
           // this.stopPingInterval();
           reject(error);
         };
@@ -120,7 +121,7 @@ export class WSClient {
   }
 
   private handleMessage(data: WSMessage) {
-    console.log("Received message:", data);
+    // console.log("Received message:", data);
     if (this.messageCallback) {
       this.messageCallback(data);
     }

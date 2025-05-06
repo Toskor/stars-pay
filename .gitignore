@@ -2,3 +2,4 @@ target
 .vscode/settings.json
 .vscode
 file.sh
+server/src/sounds/donation_sound.mp3

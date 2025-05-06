@@ -71,7 +71,7 @@ pub async fn handle_client(
     loop {
         tokio::select! {
             Ok(frame) = ws.read_frame() => {
-                println!("OpCode: {:?}", frame.opcode);
+                // println!("OpCode: {:?}", frame.opcode);
                 match frame.opcode {
                     OpCode::Close => {
                         println!("OpCode::Close received from client {}", cid);

@@ -9,6 +9,8 @@ export interface DonationItem {
   //mb url for image
   invoice_payload: string;
 
+  message: string;
+
   url: string;
   isGif: boolean;
   timestamp: number;
@@ -42,6 +44,7 @@ function createDonationStore() {
           from: ws_msg.from,
           total_amount: ws_msg.total_amount,
           invoice_payload: ws_msg.invoice_payload,
+          message: ws_msg.message,
         };
         return {
           ...state,

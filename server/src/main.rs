@@ -80,6 +80,8 @@ async fn main() {
             "/stardonationservice/refreshLayerToken",
             post(refresh_layer_token),
         )
+        //test cdn
+        .route("/sound/:sound_name", get(handlers::sound_handler))
         // ws server
         // exmple url: wss://host/ws/bot_username?ws_token=1234567890
         .route("/ws/:bot_username", get(ws_handler))
@@ -105,6 +107,7 @@ async fn main() {
                     total_amount: 100,
                     invoice_payload: "https://i.giphy.com/media/3oEjI6SIIHBdRx6PBI/giphy.gif"
                         .to_string(),
+                    message: "test message".to_string(),
                 };
 
                 arc_app_state
@@ -113,7 +116,7 @@ async fn main() {
                         serde_json::to_vec(&msg).unwrap(),
                     )
                     .await;
-                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(7)).await;
             }
         }
     });
