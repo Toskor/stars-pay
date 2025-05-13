@@ -18,7 +18,12 @@ use tower::{Service, ServiceExt};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    api::{self, bot_numeric_id_from_token}, app_state::get_bot_id_from_username, http, json, main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN}, ws_server::{self, handle_client}, AppState, HTML_MINI_APP
+    api::{self, bot_numeric_id_from_token},
+    app_state::get_bot_id_from_username,
+    http, json,
+    main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
+    ws_server::{self, handle_client},
+    AppState, HTML_BLOCKED_APP, HTML_MINI_APP,
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
@@ -199,12 +204,8 @@ pub async fn create_invoice(
     }
 }
 
-pub async fn mini_app(Path(bot_id): Path<String>) -> impl IntoResponse {
-    //todo add to app_config error version
-    //todo need return error page (mb if payment is expired return special page)
-
-    let path = format!("server/src/mini_app_sources/{}.html", bot_id);
-    let file = match File::open(&path).await {
+async fn serve_html_file(path: &str) -> Result<(HeaderMap, Body), (StatusCode, String)> {
+    let file = match File::open(path).await {
         Ok(file) => Ok(file),
         Err(_) => File::open("server/src/mini_app_sources/404.html").await,
     };
@@ -212,16 +213,46 @@ pub async fn mini_app(Path(bot_id): Path<String>) -> impl IntoResponse {
     match file {
         Ok(file) => {
             let stream = ReaderStream::new(file);
-            let body = axum::body::Body::from_stream(stream);
+            let body = Body::from_stream(stream);
 
-            let headers = [(
+            let mut headers = HeaderMap::new();
+            headers.insert(
                 header::CONTENT_TYPE,
                 HeaderValue::from_static("text/html; charset=utf-8"),
-            )];
+            );
 
             Ok((headers, body))
         }
-        Err(err) => return Err((StatusCode::NOT_FOUND, format!("Not found: {}", err))),
+        Err(err) => Err((StatusCode::NOT_FOUND, format!("Not found: {}", err))),
+    }
+}
+
+pub async fn mini_app(
+    Path(bot_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    if bot_id == MAIN_BOT_ID {
+        let path = format!("server/src/mini_app_sources/{}.html", bot_id);
+        return serve_html_file(&path).await;
+    }
+
+    match state.is_bot_blocked(bot_id.clone()).await {
+        Ok(true) => {
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+            Ok((headers, Body::from(HTML_BLOCKED_APP)))
+        }
+        Ok(false) => {
+            let path = format!("server/src/mini_app_sources/{}.html", bot_id);
+            serve_html_file(&path).await
+        }
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to check bot status".to_string(),
+        )),
     }
 }
 
@@ -1130,12 +1161,20 @@ pub async fn parse_update(
                     message: "some message".to_string(),
                 };
 
-                state
-                    .send_donation_to_room_members(
-                        bot_id,
+                let state_c = state.clone();
+                let bot_id_c = bot_id.clone();
+                let stars = pre_checkout_query.total_amount;
+
+                let (_res_send, res_increase) = tokio::join!(
+                    state_c.send_donation_to_room_members(
+                        bot_id_c.clone(),
                         serde_json::to_vec(&ws_donation_event).unwrap(),
-                    )
-                    .await;
+                    ),
+                    //can throw db error
+                    state_c.increase_stars_debt(bot_id_c, stars)
+                );
+
+                res_increase?;
             }
         }
         json::UpdateData::Message(message) => {
@@ -1291,9 +1330,7 @@ fn check_hash(init_data: &str, token: &str) -> Option<json::WebAppUser> {
 }
 
 //handle test cdn
-pub async fn sound_handler(
-    Path(sound_name): Path<String>,
-) -> impl IntoResponse {
+pub async fn sound_handler(Path(sound_name): Path<String>) -> impl IntoResponse {
     let sound_path = format!("server/src/sounds/{}", sound_name);
 
     let file = File::open(sound_path).await.unwrap();

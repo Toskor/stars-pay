@@ -21,7 +21,10 @@ if (target === "main_bot_mini_app") {
   input = {
     layer: resolve(__dirname, "src/pages/layer.html"),
   };
-  console.log(input);
+} else if (target === "blocked_app") {
+  input = {
+    blocked_app: resolve(__dirname, "src/pages/blocked_app.html"),
+  };
 }
 
 const fileGenerationConfig = {

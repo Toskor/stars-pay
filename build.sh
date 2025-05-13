@@ -14,6 +14,9 @@ TARGET="mini_app" bun run build
 echo "layer"
 TARGET="layer" bun run build
 
+echo "blocked_app"
+TARGET="blocked_app" bun run build
+
 echo "Build complete!"
 
 cd ..

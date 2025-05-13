@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_rusqlite::{rusqlite::named_params, Connection};
 use rusqlite::functions::FunctionFlags;
 
-use crate::app_state::UserRole;
+use crate::{app_state::UserRole, MAX_DAYS_SINCE_LAST_PAYMENT, MAX_STARS_DEBT};
 
 #[derive(Debug, Clone)]
 pub struct DBBot {
@@ -19,6 +19,11 @@ pub struct DBBot {
     pub owner: u64,
     // admins id vec in json format
     pub admins: Vec<u64>,
+    // Last payment date
+    pub last_payment_date: Option<u64>,
+    // Stars debt
+    pub star_debt: i64,
+    pub blocked: bool,
 }
 impl DBBot {
     pub fn new(
@@ -28,15 +33,18 @@ impl DBBot {
         ws_token: String,
         owner: u64,
         admins: Vec<u64>,
+        blocked: bool,
     ) -> Self {
         DBBot {
             id,
-            // numeric_id,
             token,
             secret_token,
             ws_token,
             owner,
             admins,
+            last_payment_date: None,
+            star_debt: 0,
+            blocked,
         }
     }
 }
@@ -51,16 +59,18 @@ impl DataBase {
         let conn = Connection::open(path).await?;
 
         conn.call(move |conn| {
-            //todo rename ws_token to layer_token
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS bots (
-                id              TEXT PRIMARY KEY NOT NULL,
-                token           TEXT NOT NULL,
-                secret_token    TEXT NOT NULL,
-                ws_token        TEXT NOT NULL,
-                app_config      TEXT NOT NULL,
-                owner           INTEGER NOT NULL,
-                admins          TEXT NOT NULL
+                id                  TEXT PRIMARY KEY NOT NULL,
+                token               TEXT NOT NULL,
+                secret_token        TEXT NOT NULL,
+                ws_token            TEXT NOT NULL,
+                app_config          TEXT NOT NULL,
+                owner               INTEGER NOT NULL,
+                admins              TEXT NOT NULL,
+                last_payment_date   INTEGER,
+                star_debt           INTEGER NOT NULL DEFAULT 0,
+                blocked             BOOLEAN NOT NULL DEFAULT 0
             )",
                 (),
             )
@@ -101,7 +111,7 @@ impl DataBase {
         let bots = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    "SELECT id, token, secret_token, ws_token, owner, admins FROM bots 
+                    "SELECT id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked FROM bots 
                     WHERE admins LIKE :search_pattern",
                 )?;
                 let query_result =
@@ -114,6 +124,9 @@ impl DataBase {
                         let admins_json = row.get_ref(5)?.as_str()?;
                         let admins: Vec<u64> =
                             serde_json::from_str(admins_json).map_err(map_serde_err)?;
+                        let last_payment_date: Option<u64> = row.get(6)?;
+                        let star_debt: i64 = row.get(7)?;
+                        let blocked: bool = row.get(8)?;
 
                         if !admins.contains(&owner) {
                             Ok(Some(DBBot {
@@ -123,6 +136,9 @@ impl DataBase {
                                 ws_token,
                                 owner,
                                 admins: admins.into_iter().filter(|&id| id != owner).collect(),
+                                last_payment_date,
+                                star_debt,
+                                blocked,
                             }))
                         } else {
                             Ok(None)
@@ -146,7 +162,7 @@ impl DataBase {
         let bots = conn
             .call(move |conn| {
                 let mut stmt =
-                    conn.prepare_cached("SELECT id, token, secret_token, ws_token, owner, admins FROM bots WHERE owner = :owner_id")?;
+                    conn.prepare_cached("SELECT id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked FROM bots WHERE owner = :owner_id")?;
                 let bots_map = stmt.query_map(named_params! { ":owner_id": owner_id }, |row| {
                     let id: String = row.get(0)?;
                     let token: String = row.get(1)?;
@@ -159,7 +175,11 @@ impl DataBase {
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
                     let admins = admins.into_iter().filter(|&id| id != owner_id).collect();
 
-                    Ok(DBBot { id, token, secret_token, ws_token, owner, admins })
+                    let last_payment_date: Option<u64> = row.get(6)?;
+                    let star_debt: i64 = row.get(7)?;
+                    let blocked: bool = row.get(8)?;
+
+                    Ok(DBBot { id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked })
                 })?;
                 let mut bots: Vec<DBBot> = vec![];
                 for bot in bots_map.into_iter() {
@@ -177,20 +197,31 @@ impl DataBase {
         let bot = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    "SELECT id, token, secret_token, ws_token, owner, admins FROM bots WHERE id = ?",
+                    "SELECT id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked FROM bots WHERE id = ?",
                 )?;
                 let bot = stmt.query_row([bot_id], |row| {
+                    let id: String = row.get(0)?;
+                    let token: String = row.get(1)?;
+                    let secret_token: String = row.get(2)?;
+                    let ws_token: String = row.get(3)?;
+                    let owner: u64 = row.get(4)?;
                     let admins_json = row.get_ref(5)?.as_str()?;
                     let admins: Vec<u64> =
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
+                    let last_payment_date: Option<u64> = row.get(6)?;
+                    let star_debt: i64 = row.get(7)?;
+                    let blocked: bool = row.get(8)?;
 
                     Ok(DBBot {
-                        id: row.get(0)?,
-                        token: row.get(1)?,
-                        secret_token: row.get(2)?,
-                        ws_token: row.get(3)?,
-                        owner: row.get(4)?,
-                        admins: admins,
+                        id,
+                        token,
+                        secret_token,
+                        ws_token,
+                        owner,
+                        admins,
+                        last_payment_date,
+                        star_debt,
+                        blocked,
                     })
                 })?;
 
@@ -208,7 +239,7 @@ impl DataBase {
 
         conn.call(move |conn| {
             conn.execute(
-                "INSERT INTO bots (id, token, secret_token, ws_token, app_config, owner, admins) VALUES (:id, :token, :secret_token, :ws_token, :app_config, :owner, :admins)",
+                "INSERT INTO bots (id, token, secret_token, ws_token, app_config, owner, admins, last_payment_date, star_debt, blocked) VALUES (:id, :token, :secret_token, :ws_token, :app_config, :owner, :admins, :last_payment_date, :star_debt, :blocked)",
                 named_params! {
                     ":id": &bot.id,
                     ":token": &bot.token,
@@ -217,6 +248,9 @@ impl DataBase {
                     ":app_config": &app_config,
                     ":owner": &bot.owner,
                     ":admins": &admins_json,
+                    ":last_payment_date": &bot.last_payment_date,
+                    ":star_debt": &bot.star_debt,
+                    ":blocked": &bot.blocked,
                 },
             )
         })
@@ -232,13 +266,16 @@ impl DataBase {
 
         conn.call(move |conn| {
             conn.execute(
-                "UPDATE bots SET token = :token, secret_token = :secret_token, ws_token = :ws_token, owner = :owner, admins = :admins WHERE id = :id",
+                "UPDATE bots SET token = :token, secret_token = :secret_token, ws_token = :ws_token, owner = :owner, admins = :admins, last_payment_date = :last_payment_date, star_debt = :star_debt, blocked = :blocked WHERE id = :id",
                 named_params! {
                     ":token": &bot.token,
                     ":secret_token": &bot.secret_token,
                     ":ws_token": &bot.ws_token,
                     ":owner": &bot.owner,
                     ":admins": &admins_json,
+                    ":last_payment_date": &bot.last_payment_date,
+                    ":star_debt": &bot.star_debt,
+                    ":blocked": &bot.blocked,
                     ":id": &bot.id,
                 },
             )
@@ -468,7 +505,103 @@ impl DataBase {
         .await?;
         Ok(())
     }
+
+    pub async fn update_last_payment_date(&self, bot_id: String, timestamp: i64) -> Result<()> {
+        let conn = &self.conn;
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET last_payment_date = :timestamp WHERE id = :id",
+                named_params! { ":timestamp": &timestamp, ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_stars_balance(&self, bot_id: String, stars: i64) -> Result<()> {
+        let conn = &self.conn;
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET star_debt = :stars WHERE id = :id",
+                named_params! { ":stars": &stars, ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn increase_stars_debt(&self, bot_id: String, stars_amount: u32) -> Result<()> {
+        let conn = &self.conn;
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET star_debt = star_debt + :stars WHERE id = :id",
+                named_params! { ":stars": &stars_amount, ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn process_payment(&self, bot_id: String, stars_amount: i64) -> Result<()> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let conn = &self.conn;
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET last_payment_date = :timestamp, star_debt = star_debt - :stars WHERE id = :id",
+                named_params! {
+                    ":timestamp": &timestamp,
+                    ":stars": &stars_amount,
+                    ":id": &bot_id 
+                },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_bot_blocked(&self, bot_id: String, blocked: bool) -> Result<()> {
+        let conn = &self.conn;
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE bots SET blocked = :blocked WHERE id = :id",
+                named_params! { ":blocked": &blocked, ":id": &bot_id },
+            )?;
+            Ok::<(), async_rusqlite::Error>(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn debt_params(&self, bot_id: String) -> Result<(Option<u64>, i64, bool)> {
+        let conn = &self.conn;
+        let params = conn
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT last_payment_date, star_debt, blocked FROM bots WHERE id = :id",
+                    named_params! { ":id": &bot_id },
+                    |row| {
+                        let last_payment_date: Option<u64> = row.get(0)?;
+                        let star_debt: i64 = row.get(1)?;
+                        let blocked: bool = row.get(2)?;
+
+                        Ok((last_payment_date, star_debt, blocked))
+                    },
+                )
+            })
+            .await?;
+        Ok(params)
+    }
 }
+
+
 
 fn map_serde_err(e: serde_json::error::Error) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(

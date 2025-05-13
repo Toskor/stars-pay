@@ -36,12 +36,17 @@ const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_a
 const HTML_MAIN_BOT_MINI_APP: &str =
     include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
 const HTML_LAYER: &str = include_str!("../../tma-client/dist/src/pages/layer.html");
+const HTML_BLOCKED_APP: &str = include_str!("../../tma-client/dist/src/pages/blocked_app.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
-const CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
+pub const CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(10) };
+pub const ROOM_CAPACITY: usize = 100;
 
-const ROOM_CAPACITY: usize = 10;
+// Maximum allowed stars debt before bot gets blocked
+pub const MAX_STARS_DEBT: i64 = 100;
+// Maximum days since last payment before bot gets blocked
+pub const MAX_DAYS_SINCE_LAST_PAYMENT: u64 = 30;
 
 #[tokio::main]
 async fn main() {

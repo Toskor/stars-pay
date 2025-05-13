@@ -9,7 +9,7 @@ use crate::{
     api,
     db::{DBBot, DataBase},
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
-    CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
+    CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP, MAX_DAYS_SINCE_LAST_PAYMENT, MAX_STARS_DEBT,
 };
 use crate::{json, HTML_LAYER, ROOM_CAPACITY};
 
@@ -72,10 +72,10 @@ impl AppState {
         //todo add main bot in db
 
         // //main bot
-        // match self.add_mainbot().await {
-        //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error1: {}", e),
-        // }
+        match self.add_mainbot().await {
+            Ok(_) => println!("Bot added"),
+            Err(e) => println!("Error1: {}", e),
+        }
 
         // //second_test_1
         // match self
@@ -112,9 +112,7 @@ impl AppState {
 
         self.update_layer_source(
             "star_donation".to_string(),
-            self.generate_layer_url("star_donation")
-                .await
-                .unwrap(),
+            self.generate_layer_url("star_donation").await.unwrap(),
         )
         .await
         .unwrap();
@@ -122,7 +120,7 @@ impl AppState {
         Ok(())
     }
 
-    //todo add new bot:  set cmd,
+    //todo add new bot: set cmd,
     pub async fn add_bot(&self, token: &str, owner: u64) -> Result<(String, String)> {
         let bot_info = api::get_bot_info(token).await?;
         let bot_info = if bot_info.ok {
@@ -196,6 +194,7 @@ impl AppState {
             ws_token,
             owner,
             admins,
+            false,
         );
 
         self.db.insert_bot(bot, app_config).await?;
@@ -227,6 +226,7 @@ impl AppState {
             ws_token,
             MAIN_BOT_OWNER,
             MAIN_BOT_ADMINS.to_vec(),
+            false,
         );
         self.db.insert_bot(bot, "".to_string()).await?;
         Ok(())
@@ -581,6 +581,38 @@ impl AppState {
 
         Ok(t)
     }
+
+    pub async fn increase_stars_debt(&self, bot_id: String, stars_amount: u32) -> Result<()> {
+        self.db.increase_stars_debt(bot_id, stars_amount).await?;
+        Ok(())
+    }
+
+    pub async fn process_payment(&self, bot_id: String, stars_amount: i64) -> Result<()> {
+        self.db.process_payment(bot_id, stars_amount).await?;
+        Ok(())
+    }
+
+    pub async fn is_bot_blocked(&self, bot_id: String) -> Result<bool> {
+        let (last_payment_date, star_debt, blocked) = self.db.debt_params(bot_id.clone()).await?;
+
+        if blocked {
+            return Ok(true);
+        }
+
+        if let Some(last_payment_date) = last_payment_date {
+            let days_since_payment = days_since_last_payment(last_payment_date);
+            if days_since_payment > MAX_DAYS_SINCE_LAST_PAYMENT && star_debt > MAX_STARS_DEBT {
+                self.set_bot_blocked(bot_id, true).await?;
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    pub async fn set_bot_blocked(&self, bot_id: String, blocked: bool) -> Result<()> {
+        self.db.set_bot_blocked(bot_id, blocked).await
+    }
 }
 
 pub fn get_bot_id_from_username(bot_username: &str) -> String {
@@ -590,4 +622,13 @@ pub fn get_bot_id_from_username(bot_username: &str) -> String {
         .trim_end_matches("bot")
         .trim_end_matches("_")
         .to_string()
+}
+
+fn days_since_last_payment(last_payment_date: u64) -> u64 {
+    (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u64
+        - last_payment_date)
+        / 86400
 }
