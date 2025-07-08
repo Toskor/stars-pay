@@ -15,6 +15,7 @@
     QuestionMarkIcon,
     Input,
     AddCircleIcon,
+    Text,
   } from "telegram-ui";
   import { get } from "svelte/store";
   import {
@@ -23,6 +24,7 @@
     getAvatarAsObjectUrl,
     type BotsStoreType,
   } from "./store";
+  import { getDebtInvoiceURL } from "./queries";
 
   let { navigateTo }: { navigateTo: (page: Page, bot?: Bot) => void } =
     $props();
@@ -61,6 +63,34 @@
       }
     } finally {
       isRefreshing = false;
+    }
+  }
+
+  async function handlePay(bot: Bot) {
+    if (!app) return;
+    console.log("handlePay", bot);
+    //request to generate special invoice url for paying debt
+    //mb need to add special params like bot_id, user_id, amount, etc
+    
+    const response = await getDebtInvoiceURL(app.initData, bot.id);
+    if (response.success) {
+      let invoice_url = response.data.invoice_url;
+      app.openInvoice(invoice_url, (status: string) => {
+        if (status === "paid") {
+          // set bot not blocked
+          const storeValue = get(botsStore) as BotsStoreType;
+          const botToUpdate = storeValue.data?.bots?.find((b) => b.id === bot.id);
+          if (botToUpdate) {
+            botToUpdate.blocked = false;
+            botToUpdate.suspended = false;
+            botToUpdate.debt = 0;
+          }
+          suspendedBots = suspendedBots.filter((b) => b.id !== bot.id);
+        }
+      });
+    } else {
+      //todo show error
+      console.log("handlePay error",  response.error);
     }
   }
 
@@ -242,7 +272,7 @@
           {#each suspendedBots as bot, index}
             <Cell>
               {#snippet before()}
-                <Avatar size={48} src={bot.avatar} />
+                <Avatar size={48} src={bot.avatar} acronym={bot.name[0]} />
               {/snippet}
 
               {#snippet children()}
@@ -255,7 +285,15 @@
 
               {#snippet description()}
                 <!-- todo button action -->
-                <Button mode="filled" size="s">Pay</Button>
+                <Button mode="filled" size="s" onclick={() => handlePay(bot)}
+                  >Pay</Button
+                >
+              {/snippet}
+
+              {#snippet after()}
+                {#if bot.blocked}
+                  <Text weight={1} plain={true}>Blocked</Text>
+                {/if}
               {/snippet}
             </Cell>
 

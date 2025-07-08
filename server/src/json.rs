@@ -83,6 +83,11 @@ pub struct CreateInvoiceQueryParam {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct GetDebtInvoiceURLQueryParam {
+    pub target_bot_id: String,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct CreateInvoiceAnswer {
     pub result: String,
 }
@@ -181,7 +186,8 @@ pub struct TMABotData {
     pub admins: Vec<TMAUserData>,
 
     pub suspended: Option<bool>,
-    pub debt: Option<u64>,
+    pub debt: Option<i64>,
+    pub blocked: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

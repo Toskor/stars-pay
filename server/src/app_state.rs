@@ -11,7 +11,7 @@ use crate::{
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
     CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP, MAX_DAYS_SINCE_LAST_PAYMENT, MAX_STARS_DEBT,
 };
-use crate::{json, HTML_LAYER, ROOM_CAPACITY};
+use crate::{json, HTML_LAYER, PROCENT_FOR_MAIN_BOT, ROOM_CAPACITY};
 
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
@@ -72,10 +72,10 @@ impl AppState {
         //todo add main bot in db
 
         // //main bot
-        match self.add_mainbot().await {
-            Ok(_) => println!("Bot added"),
-            Err(e) => println!("Error1: {}", e),
-        }
+        // match self.add_mainbot().await {
+        //     Ok(_) => println!("Bot added"),
+        //     Err(e) => println!("Error1: {}", e),
+        // }
 
         // //second_test_1
         // match self
@@ -90,7 +90,7 @@ impl AppState {
         //     Err(e) => println!("Error: {}", e),
         // }
 
-        // //star_donation
+        //star_donation
         // match self
         //     .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
         //     .await
@@ -582,8 +582,9 @@ impl AppState {
         Ok(t)
     }
 
-    pub async fn increase_stars_debt(&self, bot_id: String, stars_amount: u32) -> Result<()> {
-        self.db.increase_stars_debt(bot_id, stars_amount).await?;
+    pub async fn increase_stars_debt_for(&self, bot_id: String, stars_amount: u32) -> Result<()> {
+        let stars_debt = stars_amount as f32 * PROCENT_FOR_MAIN_BOT;
+        self.db.increase_stars_debt(bot_id, stars_debt).await?;
         Ok(())
     }
 
@@ -610,8 +611,38 @@ impl AppState {
         Ok(false)
     }
 
+    pub async fn get_debt_params(&self, bot_id: String) -> Result<(Option<u64>, i64, bool)> {
+        self.db.debt_params(bot_id).await
+    }
+
     pub async fn set_bot_blocked(&self, bot_id: String, blocked: bool) -> Result<()> {
         self.db.set_bot_blocked(bot_id, blocked).await
+    }
+
+    pub async fn generate_debt_invoice_url(&self, bot_id: String) -> Result<String> {
+        let bot = self.db.get_bot(bot_id.clone()).await?;
+
+        let title = format!("Payment for {}", bot.id);
+        let payload = format!("paymentFor:{}", bot.id);
+        let amount = if bot.star_debt > 0 {
+            bot.star_debt as u32
+        } else {
+            return Err(anyhow::anyhow!("Bot has no debt"));
+        };
+
+        //todo remove (for test)
+        let amount = 1;
+
+        let invoice_params = json::CreateInvoiceQueryParam {
+            title,
+            description: "".to_string(),
+            payload,
+            amount,
+        };
+
+        let invoice_url = api::create_invoice_link(MAIN_BOT_TOKEN, &invoice_params).await?;
+
+        Ok(invoice_url)
     }
 }
 

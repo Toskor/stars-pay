@@ -92,7 +92,10 @@ class ApiClient {
     userId: string,
     bot_id: string
   ): Promise<Blob | null> {
-    console.log("getAvatar start", `${this.baseUrl}/${bot_id}/avatar/${userId}`);
+    console.log(
+      "getAvatar start",
+      `${this.baseUrl}/${bot_id}/avatar/${userId}`
+    );
     try {
       const response = await fetch(
         `${this.baseUrl}/${bot_id}/avatar/${userId}`,
@@ -216,9 +219,22 @@ class ApiClient {
 
   async refreshLayerToken(
     initData: string,
-    bot_id: string,
+    bot_id: string
   ): Promise<ApiResponse<{ status: string }>> {
     return this.request<{ status: string }>("/refreshLayerToken", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ target_bot_id: bot_id }),
+    });
+  }
+
+  async getDebtInvoiceURL(
+    initData: string,
+    bot_id: string
+  ): Promise<ApiResponse<{ invoice_url: string }>> {
+    return this.request<{ invoice_url: string }>("/getDebtInvoiceURL", {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
@@ -243,3 +259,4 @@ export const addBot = api.addBot.bind(api);
 export const getConfig = api.getConfig.bind(api);
 export const updateConfig = api.updateConfig.bind(api);
 export const refreshLayerToken = api.refreshLayerToken.bind(api);
+export const getDebtInvoiceURL = api.getDebtInvoiceURL.bind(api);

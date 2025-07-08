@@ -25,6 +25,7 @@ export interface Bot {
 
   suspended?: boolean;
   debt?: number;
+  blocked?: boolean;
 
   preview_data?: PreviewData;
 }

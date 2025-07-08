@@ -23,7 +23,7 @@ use crate::{
     http, json,
     main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
     ws_server::{self, handle_client},
-    AppState, HTML_BLOCKED_APP, HTML_MINI_APP,
+    AppState, HTML_BLOCKED_APP, HTML_MINI_APP, MAX_STARS_DEBT,
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
@@ -298,7 +298,7 @@ async fn convert_controlled_bots_to_json_value(
 ) -> Result<Value> {
     //todo remove time
     use std::time::Instant;
-    use tokio::task::{self, JoinHandle};
+    use tokio::task::JoinHandle;
 
     let mut tasks: Vec<JoinHandle<Option<json::TMABotData>>> = Vec::new();
 
@@ -377,6 +377,13 @@ fn process_owner_bots(
                 }
             };
 
+            let suspended = if bot.star_debt > MAX_STARS_DEBT as i64 {
+                Some(true)
+            } else {
+                None
+            };
+            let blocked = if bot.blocked { Some(true) } else { None };
+
             Some(json::TMABotData {
                 id: bot.id.clone(),
                 numeric_id: bot_numeric_id_from_token(&bot.token).unwrap_or(0),
@@ -390,8 +397,10 @@ fn process_owner_bots(
                     avatar_url: Some(owner.photo_url),
                 },
                 admins,
-                suspended: None,
-                debt: None,
+                //todo need to get from db
+                suspended,
+                debt: Some(bot.star_debt),
+                blocked,
             })
         });
         tasks.push(task);
@@ -468,6 +477,13 @@ fn process_admin_bots(
                 }
             };
 
+            let suspended = if bot.star_debt > MAX_STARS_DEBT as i64 {
+                Some(true)
+            } else {
+                None
+            };
+            let blocked = if bot.blocked { Some(true) } else { None };
+
             Some(json::TMABotData {
                 id: bot.id.clone(),
                 numeric_id: bot_numeric_id_from_token(&bot.token).unwrap_or(0),
@@ -481,8 +497,10 @@ fn process_admin_bots(
                     avatar_url: None,
                 },
                 admins,
-                suspended: None,
-                debt: None,
+                //todo need to get from db
+                suspended,
+                debt: Some(bot.star_debt),
+                blocked,
             })
         });
         tasks.push(task);
@@ -582,6 +600,7 @@ pub async fn add_bot(
                         admins: vec![],
                         suspended: None,
                         debt: None,
+                        blocked: None,
                     };
                     (
                         StatusCode::OK,
@@ -932,6 +951,49 @@ pub async fn refresh_layer_token(
     }
 }
 
+#[axum::debug_handler]
+pub async fn get_debt_invoice_url(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::GetDebtInvoiceURLQueryParam>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(MAIN_BOT_ID, |bot| {
+            if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
+                Some(())
+            } else {
+                None
+            }
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(_)) => {
+            let invoice_url = match state.generate_debt_invoice_url(payload.target_bot_id).await {
+                Ok(url) => url,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": e.to_string()})),
+                    );
+                }
+            };
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"invoice_url": invoice_url})),
+            )
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
 pub async fn get_bot_ws_token(
     headers: HeaderMap,
     Path(bot_id): Path<String>,
@@ -1106,14 +1168,14 @@ pub async fn webhook_handler(
     if let Ok((security_check_result, token)) = res {
         //safety check
         if !security_check_result {
-            println!("Failed security check");
+            println!("Failed security check for {}", bot_id);
             return (StatusCode::UNAUTHORIZED, Json(Value::Null));
         }
 
         //todo redo
         if bot_id == MAIN_BOT_ID {
             println!("Main bot webhook");
-            match main_bot::parse_update(&payload, &token).await {
+            match main_bot::parse_update(&payload, &token, &state).await {
                 Ok(json) => return (StatusCode::OK, Json(json)),
                 Err(e) => error = e,
             }
@@ -1170,8 +1232,8 @@ pub async fn parse_update(
                         bot_id_c.clone(),
                         serde_json::to_vec(&ws_donation_event).unwrap(),
                     ),
-                    //can throw db error
-                    state_c.increase_stars_debt(bot_id_c, stars)
+                    //todo can throw db error
+                    state_c.increase_stars_debt_for(bot_id_c, stars)
                 );
 
                 res_increase?;
@@ -1276,7 +1338,7 @@ async fn parse_message(
 
 fn check_secret_token(secret_token: &str, headers: &HeaderMap) -> bool {
     if let Some(header_token) = headers.get("X-Telegram-Bot-Api-Secret-Token") {
-        // println!("header_token: {:?} secret_token: {:?}", header_token, secret_token);
+        println!("check_secret_token header_token: {:?} secret_token: {:?}", header_token, secret_token);
         if header_token == secret_token {
             return true;
         }

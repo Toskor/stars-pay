@@ -532,7 +532,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn increase_stars_debt(&self, bot_id: String, stars_amount: u32) -> Result<()> {
+    pub async fn increase_stars_debt(&self, bot_id: String, stars_amount: f32) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {
             conn.execute(
@@ -601,8 +601,6 @@ impl DataBase {
     }
 }
 
-
-
 fn map_serde_err(e: serde_json::error::Error) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error {
@@ -616,6 +614,21 @@ fn map_serde_err(e: serde_json::error::Error) -> rusqlite::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn change_bot() {
+        let db = DataBase::new_sql_lite(
+            "/Users/grigory/Documents/GitHub/tg-stars/db/bots_data_base.sqlite",
+        )
+        .await
+        .expect("Failed to create database");
+    
+    
+    let mut bot = db.get_bot("second_test_1".to_string()).await.unwrap();
+        bot.secret_token = "1b416aa8-e0f2-46ef-a73f-f60a429289b3".to_string();
+
+        db.update_bot(bot).await.unwrap();
+    }
 
     #[tokio::test]
     async fn test_add_admin() {

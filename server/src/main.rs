@@ -19,6 +19,8 @@ use tokio::{
     sync::{broadcast, Mutex},
 };
 
+use crate::handlers::get_debt_invoice_url;
+
 #[macro_use]
 extern crate dotenv_codegen;
 
@@ -47,6 +49,7 @@ pub const ROOM_CAPACITY: usize = 100;
 pub const MAX_STARS_DEBT: i64 = 100;
 // Maximum days since last payment before bot gets blocked
 pub const MAX_DAYS_SINCE_LAST_PAYMENT: u64 = 30;
+pub const PROCENT_FOR_MAIN_BOT: f32 = 0.03;
 
 #[tokio::main]
 async fn main() {
@@ -84,6 +87,10 @@ async fn main() {
         .route(
             "/stardonationservice/refreshLayerToken",
             post(refresh_layer_token),
+        )
+        .route(
+            "/stardonationservice/getDebtInvoiceURL",
+            post(get_debt_invoice_url),
         )
         //test cdn
         .route("/sound/:sound_name", get(handlers::sound_handler))
