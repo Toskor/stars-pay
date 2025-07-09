@@ -133,6 +133,8 @@ async fn main() {
         }
     });
 
+    _test_layer_task.abort();
+
     // let _test_task_2 = tokio::spawn({
     //     let arc_app_state = arc_app_state.clone();
     //     async move {

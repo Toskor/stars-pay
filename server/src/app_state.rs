@@ -112,7 +112,7 @@ impl AppState {
 
         self.update_layer_source(
             "star_donation".to_string(),
-            self.generate_layer_url("star_donation").await.unwrap(),
+            &self.generate_ws_url("star_donation").await.unwrap(),
         )
         .await
         .unwrap();
@@ -279,19 +279,27 @@ impl AppState {
         Ok(layer_url)
     }
 
-    pub async fn generate_layer_url_with_t(&self, bot_id: String, t: String) -> Result<String> {
+    pub async fn generate_layer_url_with_t(&self, bot_id: &str, t: &str) -> Result<String> {
         let domain = dotenv!("DOMAIN");
-        let layer_url = format!("{domain}/{bot_id}/layer?t={t}");
+        let layer_url = format!("{domain}{bot_id}/layer?t={t}");
 
         Ok(layer_url)
     }
 
-    pub async fn update_layer_source(&self, bot_id: String, layer_url: String) -> Result<()> {
+    pub async fn generate_ws_url(&self, bot_id: &str) -> Result<String> {
+        let ws_token = self.get_bot_ws_token(bot_id.to_string()).await?;
+        let domain = dotenv!("WS_DOMAIN");
+        let ws_url = format!("{domain}ws/{bot_id}?ws_token={ws_token}");
+
+        Ok(ws_url)
+    }
+
+    pub async fn update_layer_source(&self, bot_id: String, ws_url: &str) -> Result<()> {
         let path = format!("server/src/layer_sources/{}.html", bot_id);
 
         let html = HTML_LAYER.to_string().replace(
             r#"{"json_to_replace":""}"#,
-            &format!(r#"{{"ws_url": "{}"}}"#, layer_url),
+            &format!(r#"{{"ws_url": "{}"}}"#, ws_url),
         );
 
         let mut file = OpenOptions::new()
@@ -565,10 +573,8 @@ impl AppState {
         }
     }
 
-    pub async fn refresh_layer_token(&self, bot_id: String) -> Result<String> {
+    pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
         let layer_token = api::generate_layer_token();
-        //t for layer url
-        let t = layer_token.chars().nth(0).unwrap().to_string();
 
         self.db
             .update_bot_layer_token(bot_id.to_string(), layer_token)
@@ -576,10 +582,13 @@ impl AppState {
 
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(&bot_id) {
-            tx.send(json::RoomMessage::CloseRoom(bot_id)).unwrap();
+            tx.send(json::RoomMessage::CloseRoom(bot_id.to_string())).unwrap();
         }
 
-        Ok(t)
+        let ws_url = self.generate_ws_url(&bot_id).await?;
+        self.update_layer_source(bot_id, &ws_url).await?;
+
+        Ok(())
     }
 
     pub async fn increase_stars_debt_for(&self, bot_id: String, stars_amount: u32) -> Result<()> {
@@ -589,7 +598,10 @@ impl AppState {
     }
 
     pub async fn process_payment(&self, bot_id: String, stars_amount: i64) -> Result<()> {
-        self.db.process_payment(bot_id, stars_amount).await?;
+        self.db
+            .decrease_debt(bot_id.to_string(), stars_amount)
+            .await?;
+        self.set_bot_blocked(bot_id, false).await?;
         Ok(())
     }
 

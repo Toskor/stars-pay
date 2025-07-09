@@ -545,7 +545,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn process_payment(&self, bot_id: String, stars_amount: i64) -> Result<()> {
+    pub async fn decrease_debt(&self, bot_id: String, stars_amount: i64) -> Result<()> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -622,9 +622,8 @@ mod tests {
         )
         .await
         .expect("Failed to create database");
-    
-    
-    let mut bot = db.get_bot("second_test_1".to_string()).await.unwrap();
+
+        let mut bot = db.get_bot("second_test_1".to_string()).await.unwrap();
         bot.secret_token = "1b416aa8-e0f2-46ef-a73f-f60a429289b3".to_string();
 
         db.update_bot(bot).await.unwrap();

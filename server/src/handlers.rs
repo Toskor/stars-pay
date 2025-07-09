@@ -919,21 +919,10 @@ pub async fn refresh_layer_token(
                 .await;
 
             match res {
-                Ok(t) => {
-                    let layer_url = state
-                        .generate_layer_url_with_t(payload.target_bot_id.clone(), t)
-                        .await
-                        .unwrap();
-
-                    state
-                        .update_layer_source(payload.target_bot_id, layer_url)
-                        .await;
-
-                    (
-                        StatusCode::OK,
-                        Json(serde_json::json!({"status": "success"})),
-                    )
-                }
+                Ok(()) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "success"})),
+                ),
                 Err(e) => (
                     StatusCode::BAD_REQUEST,
                     Json(serde_json::json!({"error": e.to_string()})),
@@ -1100,9 +1089,9 @@ pub async fn layer(
             let file = match File::open(&path).await {
                 Ok(file) => Ok(file),
                 Err(_) => {
-                    let layer_url = state.generate_layer_url(&bot_id).await.unwrap();
+                    let ws_url = state.generate_ws_url(&bot_id).await.unwrap();
                     state
-                        .update_layer_source(bot_id.clone(), layer_url)
+                        .update_layer_source(bot_id.clone(), &ws_url)
                         .await
                         .unwrap();
                     File::open(path).await
@@ -1338,7 +1327,10 @@ async fn parse_message(
 
 fn check_secret_token(secret_token: &str, headers: &HeaderMap) -> bool {
     if let Some(header_token) = headers.get("X-Telegram-Bot-Api-Secret-Token") {
-        println!("check_secret_token header_token: {:?} secret_token: {:?}", header_token, secret_token);
+        println!(
+            "check_secret_token header_token: {:?} secret_token: {:?}",
+            header_token, secret_token
+        );
         if header_token == secret_token {
             return true;
         }

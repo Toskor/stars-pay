@@ -24,8 +24,8 @@
   let layer_json = `{"json_to_replace":""}`;
   console.log("layer_json", layer_json);
 
-  let layer_json_config =
-    '{"ws_url": "wss://advanced-oddly-herring.ngrok-free.app/ws/star_donation_bot?ws_token=782cecc0-0e17-42f6-8625-4361c92ab553"}';
+  // let layer_json_config =
+  //   '{"ws_url": "wss://advanced-oddly-herring.ngrok-free.app/ws/star_donation_bot?ws_token=782cecc0-0e17-42f6-8625-4361c92ab553"}';
   let test_gif_url = "https://i.giphy.com/media/3oEjI6SIIHBdRx6PBI/giphy.gif";
   let test_image_url =
     "https://avatars.mds.yandex.net/i?id=3ef58cad5f77fcebe674582d17765372_l-4032453-images-thumbs&n=13";
@@ -43,7 +43,7 @@
     };
   }
 
-  let layer_config: LayerConfig = JSON.parse(layer_json_config);
+  let layer_config: LayerConfig = JSON.parse(layer_json);
   let wsClient: WSClient;
   let currentImage = $state<string | null>(null);
   let showImage = $state(false);
