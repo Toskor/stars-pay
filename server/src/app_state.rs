@@ -582,7 +582,8 @@ impl AppState {
 
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(&bot_id) {
-            tx.send(json::RoomMessage::CloseRoom(bot_id.to_string())).unwrap();
+            tx.send(json::RoomMessage::CloseRoom(bot_id.to_string()))
+                .unwrap();
         }
 
         let ws_url = self.generate_ws_url(&bot_id).await?;
@@ -623,7 +624,7 @@ impl AppState {
         Ok(false)
     }
 
-    pub async fn get_debt_params(&self, bot_id: String) -> Result<(Option<u64>, i64, bool)> {
+    pub async fn get_debt_params(&self, bot_id: String) -> Result<(Option<u64>, f64, bool)> {
         self.db.debt_params(bot_id).await
     }
 
@@ -636,14 +637,11 @@ impl AppState {
 
         let title = format!("Payment for {}", bot.id);
         let payload = format!("paymentFor:{}", bot.id);
-        let amount = if bot.star_debt > 0 {
-            bot.star_debt as u32
+        let amount = if bot.star_debt > 0.0 {
+            bot.star_debt.floor() as u32
         } else {
             return Err(anyhow::anyhow!("Bot has no debt"));
         };
-
-        //todo remove (for test)
-        let amount = 1;
 
         let invoice_params = json::CreateInvoiceQueryParam {
             title,

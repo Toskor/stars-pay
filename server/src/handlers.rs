@@ -52,7 +52,7 @@ pub async fn config_handler(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while getting config"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -104,7 +104,7 @@ pub async fn update_config(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while updating config"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -195,7 +195,7 @@ pub async fn create_invoice(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while creating invoice"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -283,7 +283,7 @@ pub async fn fetch_user_bots(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while fetching user bots"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -377,7 +377,7 @@ fn process_owner_bots(
                 }
             };
 
-            let suspended = if bot.star_debt > MAX_STARS_DEBT as i64 {
+            let suspended = if bot.star_debt > MAX_STARS_DEBT {
                 Some(true)
             } else {
                 None
@@ -392,14 +392,13 @@ fn process_owner_bots(
                 user_role: "owner".to_string(),
                 owner: json::TMAUserData {
                     id: owner.id,
-                    username: owner.username,
+                    username: owner.username.clone().unwrap_or_default(),
                     name: format!("{} {}", owner.first_name, owner.last_name),
                     avatar_url: Some(owner.photo_url),
                 },
                 admins,
-                //todo need to get from db
                 suspended,
-                debt: Some(bot.star_debt),
+                debt: Some(bot.star_debt.floor() as i64),
                 blocked,
             })
         });
@@ -477,7 +476,7 @@ fn process_admin_bots(
                 }
             };
 
-            let suspended = if bot.star_debt > MAX_STARS_DEBT as i64 {
+            let suspended = if bot.star_debt > MAX_STARS_DEBT {
                 Some(true)
             } else {
                 None
@@ -497,9 +496,8 @@ fn process_admin_bots(
                     avatar_url: None,
                 },
                 admins,
-                //todo need to get from db
                 suspended,
-                debt: Some(bot.star_debt),
+                debt: Some(bot.star_debt.floor() as i64),
                 blocked,
             })
         });
@@ -537,7 +535,7 @@ async fn process_admin_info(
         if admin_ids.contains(&user.id) {
             admins.push(json::TMAUserData {
                 id: user.id,
-                username: user.username.clone(),
+                username: user.username.clone().unwrap_or_default(),
                 name: format!("{} {}", user.first_name, user.last_name),
                 avatar_url: Some(user.photo_url.clone()),
             });
@@ -593,7 +591,7 @@ pub async fn add_bot(
                         user_role: "owner".to_string(),
                         owner: json::TMAUserData {
                             id: user.id,
-                            username: user.username,
+                            username: user.username.unwrap_or_default(),
                             name: format!("{} {}", user.first_name, user.last_name),
                             avatar_url: Some(user.photo_url),
                         },
@@ -615,7 +613,7 @@ pub async fn add_bot(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while adding bot"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -656,7 +654,7 @@ pub async fn add_bot_admin(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while adding bot admin"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -697,7 +695,7 @@ pub async fn remove_bot_admin(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while removing bot admin"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -846,7 +844,7 @@ pub async fn remove_bot(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while removing bot"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -887,7 +885,7 @@ pub async fn change_bot_token(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while changing bot token"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -931,7 +929,7 @@ pub async fn refresh_layer_token(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while refreshing layer token"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -974,7 +972,7 @@ pub async fn get_debt_invoice_url(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while getting debt invoice url"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -1006,7 +1004,7 @@ pub async fn get_bot_ws_token(
         ),
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure"})),
+            Json(serde_json::json!({"error": "security check failure while getting bot ws token"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -1120,7 +1118,7 @@ pub async fn layer(
         Ok(None) => {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from("Security check failure"))
+                .body(Body::from("Security check failure while getting layer"))
                 .unwrap();
         }
         Err(e) => {
@@ -1321,18 +1319,22 @@ async fn parse_message(
     state: &Arc<AppState>,
     bot_id: &str,
 ) -> Result<String> {
-    let text = message.text.as_ref().unwrap();
-    Ok(text.to_string())
+    let text = message
+        .text
+        .clone()
+        .ok_or(anyhow::anyhow!("no text in message"))?;
+    Ok(text)
 }
 
 fn check_secret_token(secret_token: &str, headers: &HeaderMap) -> bool {
     if let Some(header_token) = headers.get("X-Telegram-Bot-Api-Secret-Token") {
-        println!(
-            "check_secret_token header_token: {:?} secret_token: {:?}",
-            header_token, secret_token
-        );
         if header_token == secret_token {
             return true;
+        } else {
+            println!(
+                "check_secret_token header_token: {:?} secret_token: {:?}",
+                header_token, secret_token
+            );
         }
     }
 

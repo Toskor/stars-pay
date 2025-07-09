@@ -13,6 +13,9 @@ pub const MAIN_BOT_SECRET_TOKEN: &str = "secret";
 pub const MAIN_BOT_OWNER: u64 = 348135868;
 pub const MAIN_BOT_ADMINS: [u64; 1] = [348135868];
 
+//second acc without username (only firstname)
+//id 7637928823
+
 pub async fn parse_update(
     update: &json::Update,
     token: &str,

@@ -129,12 +129,12 @@ pub struct UpdateConfigQueryParam {
     pub target_bot_id: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct WebAppUser {
     pub id: u64,
     pub first_name: String,
     pub last_name: String,
-    pub username: String,
+    pub username: Option<String>,
     pub language_code: String,
     pub photo_url: String,
 }

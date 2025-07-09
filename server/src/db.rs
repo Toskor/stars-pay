@@ -22,7 +22,7 @@ pub struct DBBot {
     // Last payment date
     pub last_payment_date: Option<u64>,
     // Stars debt
-    pub star_debt: i64,
+    pub star_debt: f64,
     pub blocked: bool,
 }
 impl DBBot {
@@ -43,7 +43,7 @@ impl DBBot {
             owner,
             admins,
             last_payment_date: None,
-            star_debt: 0,
+            star_debt: 0.0,
             blocked,
         }
     }
@@ -69,7 +69,7 @@ impl DataBase {
                 owner               INTEGER NOT NULL,
                 admins              TEXT NOT NULL,
                 last_payment_date   INTEGER,
-                star_debt           INTEGER NOT NULL DEFAULT 0,
+                star_debt           REAL NOT NULL DEFAULT 0,
                 blocked             BOOLEAN NOT NULL DEFAULT 0
             )",
                 (),
@@ -125,7 +125,7 @@ impl DataBase {
                         let admins: Vec<u64> =
                             serde_json::from_str(admins_json).map_err(map_serde_err)?;
                         let last_payment_date: Option<u64> = row.get(6)?;
-                        let star_debt: i64 = row.get(7)?;
+                        let star_debt: f64 = row.get(7)?;
                         let blocked: bool = row.get(8)?;
 
                         if !admins.contains(&owner) {
@@ -176,7 +176,7 @@ impl DataBase {
                     let admins = admins.into_iter().filter(|&id| id != owner_id).collect();
 
                     let last_payment_date: Option<u64> = row.get(6)?;
-                    let star_debt: i64 = row.get(7)?;
+                    let star_debt: f64 = row.get(7)?;
                     let blocked: bool = row.get(8)?;
 
                     Ok(DBBot { id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked })
@@ -209,7 +209,7 @@ impl DataBase {
                     let admins: Vec<u64> =
                         serde_json::from_str(admins_json).map_err(map_serde_err)?;
                     let last_payment_date: Option<u64> = row.get(6)?;
-                    let star_debt: i64 = row.get(7)?;
+                    let star_debt: f64 = row.get(7)?;
                     let blocked: bool = row.get(8)?;
 
                     Ok(DBBot {
@@ -580,7 +580,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn debt_params(&self, bot_id: String) -> Result<(Option<u64>, i64, bool)> {
+    pub async fn debt_params(&self, bot_id: String) -> Result<(Option<u64>, f64, bool)> {
         let conn = &self.conn;
         let params = conn
             .call(move |conn| {
@@ -589,7 +589,7 @@ impl DataBase {
                     named_params! { ":id": &bot_id },
                     |row| {
                         let last_payment_date: Option<u64> = row.get(0)?;
-                        let star_debt: i64 = row.get(1)?;
+                        let star_debt: f64 = row.get(1)?;
                         let blocked: bool = row.get(2)?;
 
                         Ok((last_payment_date, star_debt, blocked))

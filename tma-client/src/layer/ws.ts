@@ -22,7 +22,7 @@ export class WSClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
+  private reconnectDelay = 5000;
   private pingInterval: number | null = null;
   private lastPongTime = 0;
   private readonly config: WSConfig;

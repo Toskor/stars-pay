@@ -46,7 +46,7 @@ pub const CACHE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(10) };
 pub const ROOM_CAPACITY: usize = 100;
 
 // Maximum allowed stars debt before bot gets blocked
-pub const MAX_STARS_DEBT: i64 = 100;
+pub const MAX_STARS_DEBT: f64 = 100.0;
 // Maximum days since last payment before bot gets blocked
 pub const MAX_DAYS_SINCE_LAST_PAYMENT: u64 = 30;
 pub const PROCENT_FOR_MAIN_BOT: f32 = 0.03;
