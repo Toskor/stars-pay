@@ -25,7 +25,7 @@
     type DonationButton,
     source_pool,
   } from "../stream_bot/types";
-  import { getConfig, updateConfig } from "./queries";
+  import { getConfig, updateConfig, makeTestDonation } from "./queries";
 
   let {
     navigateTo,
@@ -165,6 +165,21 @@
       );
     }
   };
+
+  const handleTestDonation = () => {
+    if (!bot) return;
+    
+    makeTestDonation(app!.initData, bot.id, 100, "https://i.imgur.com/892vhef.jpeg").then((res) => {
+      console.log("test donation res", res);
+      if (res.success) {
+        console.log("test donation successed sent");
+      } else {
+        //todo show error
+        console.log("test donation error", res.error);
+      }
+    });
+    
+  };
 </script>
 
 <List>
@@ -196,6 +211,14 @@
       disabled={!hasChanges}
     >
       Confirm
+    </Button>
+
+    <Button
+      mode="filled"
+      size="m"
+      onclick={handleTestDonation}
+    >
+      Test Donation
     </Button>
 
     <Section>
@@ -253,7 +276,7 @@
 
     <SectionFooter centered={false}>
       <Text>
-        Donation buttons allow your users to support your bot with predefined
+        Donation buttons allow your viewers to support your bot with predefined
         amounts.
         <br />
         You can add up to 10 donation buttons with different amounts and labels.

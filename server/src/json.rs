@@ -298,6 +298,13 @@ pub struct BotCommand {
     pub description: String,
 }
 
+#[derive(Deserialize)]
+pub struct MakeTestDonationQueryParam {
+    pub target_bot_id: String,
+    pub amount: u32,
+    pub media_source: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

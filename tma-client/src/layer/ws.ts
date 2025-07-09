@@ -48,7 +48,7 @@ export class WSClient {
 
         this.ws.onopen = () => {
           console.log("WebSocket connected");
-          this.reconnectDelay = 1000;
+          this.reconnectDelay = 5000;
           this.reconnectAttempts = 0;
           // this.startPingInterval();
           resolve();

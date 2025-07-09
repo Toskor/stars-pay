@@ -27,6 +27,50 @@ use crate::{
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
+pub async fn make_test_donation(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::MakeTestDonationQueryParam>,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(MAIN_BOT_ID, |bot| {
+            if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
+                return Some(());
+            }
+            None
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(_)) => {
+            let ws_donation_event = json::WSDonationEvent {
+                ok: true,
+                from: "Test User".to_string(),
+                total_amount: payload.amount,
+                invoice_payload: payload.media_source.clone(),
+                message: "Its just test donation".to_string(),
+            };
+
+            state
+                .send_donation_to_room_members(
+                    payload.target_bot_id.clone(),
+                    serde_json::to_vec(&ws_donation_event).unwrap(),
+                )
+                .await;
+
+            (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure while making test donation"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
 pub async fn config_handler(
     headers: HeaderMap,
     Path(bot_id): Path<String>,
@@ -929,7 +973,9 @@ pub async fn refresh_layer_token(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while refreshing layer token"})),
+            Json(
+                serde_json::json!({"error": "security check failure while refreshing layer token"}),
+            ),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -972,7 +1018,9 @@ pub async fn get_debt_invoice_url(
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while getting debt invoice url"})),
+            Json(
+                serde_json::json!({"error": "security check failure while getting debt invoice url"}),
+            ),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,

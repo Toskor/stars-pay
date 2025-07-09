@@ -242,6 +242,21 @@ class ApiClient {
       body: JSON.stringify({ target_bot_id: bot_id }),
     });
   }
+
+  async makeTestDonation(
+    initData: string,
+    bot_id: string,
+    amount: number,
+    mediaSource: string
+  ): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/makeTestDonation", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: JSON.stringify({ target_bot_id: bot_id, amount: amount, media_source: mediaSource }),
+    });
+  }
 }
 
 const api = new ApiClient(
@@ -260,3 +275,4 @@ export const getConfig = api.getConfig.bind(api);
 export const updateConfig = api.updateConfig.bind(api);
 export const refreshLayerToken = api.refreshLayerToken.bind(api);
 export const getDebtInvoiceURL = api.getDebtInvoiceURL.bind(api);
+export const makeTestDonation = api.makeTestDonation.bind(api);

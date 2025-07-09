@@ -92,6 +92,7 @@ async fn main() {
             "/stardonationservice/getDebtInvoiceURL",
             post(get_debt_invoice_url),
         )
+        .route ("/stardonationservice/makeTestDonation", post(handlers::make_test_donation))
         //test cdn
         .route("/sound/:sound_name", get(handlers::sound_handler))
         // ws server
