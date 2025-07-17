@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_rusqlite::{rusqlite::named_params, Connection};
 use rusqlite::functions::FunctionFlags;
 
-use crate::{app_state::UserRole, MAX_DAYS_SINCE_LAST_PAYMENT, MAX_STARS_DEBT};
+use crate::{app_state::UserRole, DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK, MAX_STARS_DEBT};
 
 #[derive(Debug, Clone)]
 pub struct DBBot {
@@ -47,6 +47,14 @@ impl DBBot {
             blocked,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct BotDebtParams {
+    pub id: String,
+    pub last_payment_date: Option<u64>,
+    pub star_debt: f64,
+    pub blocked: bool,
 }
 
 pub struct DataBase {
@@ -599,6 +607,37 @@ impl DataBase {
             .await?;
         Ok(params)
     }
+
+    /// Get debt parameters for all bots except the main bot in one query
+    pub async fn get_all_bots_debt_params(&self) -> Result<Vec<BotDebtParams>> {
+        let conn = &self.conn;
+        let main_bot_id = dotenv!("MAIN_BOT_ID");
+        let params = conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare_cached(
+                    "SELECT id, last_payment_date, star_debt, blocked FROM bots WHERE id != :main_bot_id"
+                )?;
+                let bots_map = stmt.query_map(named_params! { ":main_bot_id": main_bot_id }, |row| {
+                    let id: String = row.get(0)?;
+                    let last_payment_date: Option<u64> = row.get(1)?;
+                    let star_debt: f64 = row.get(2)?;
+                    let blocked: bool = row.get(3)?;
+                    Ok(BotDebtParams {
+                        id,
+                        last_payment_date,
+                        star_debt,
+                        blocked,
+                    })
+                })?;
+                let mut results: Vec<BotDebtParams> = vec![];
+                for bot_params in bots_map.into_iter() {
+                    results.push(bot_params?);
+                }
+                Ok::<Vec<BotDebtParams>, async_rusqlite::Error>(results)
+            })
+            .await?;
+        Ok(params)
+    }
 }
 
 fn map_serde_err(e: serde_json::error::Error) -> rusqlite::Error {
@@ -624,7 +663,8 @@ mod tests {
         .expect("Failed to create database");
 
         let mut bot = db.get_bot("second_test_1".to_string()).await.unwrap();
-        bot.secret_token = "1b416aa8-e0f2-46ef-a73f-f60a429289b3".to_string();
+        bot.blocked = false;
+        bot.last_payment_date = Some(1742187221);
 
         db.update_bot(bot).await.unwrap();
     }

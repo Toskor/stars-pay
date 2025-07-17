@@ -255,6 +255,40 @@ pub async fn get_avatar_url(token: &str, id: u64) -> Result<Option<String>> {
     Ok(None)
 }
 
+pub async fn send_message(
+    token: &str,
+    chat_id: u64,
+    text: &str,
+    reply_markup: Option<serde_json::Value>,
+) -> Result<()> {
+    let tg_api_url = get_tg_api_url(token);
+    let uri = hyper::Uri::from_str(&format!("{}sendMessage", tg_api_url)).unwrap();
+
+    let mut body = serde_json::json!({
+        "text": text,
+        "chat_id": chat_id,
+    });
+
+    if let Some(markup) = reply_markup {
+        body["reply_markup"] = markup;
+    }
+
+    let body_str = serde_json::to_string(&body).unwrap();
+    let headers = HeaderMap::from_iter([(
+        header::CONTENT_TYPE,
+        hyper::header::HeaderValue::from_bytes("application/json".as_bytes()).unwrap(),
+    )]);
+
+    let res = http::post(&uri, Some(&headers), body_str).await?;
+
+    if res.status == StatusCode::OK {
+        Ok(())
+    } else {
+        let err: json::Error = res.to_json()?;
+        Err(anyhow::anyhow!("{}", err.description))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tokio::time::Instant;
@@ -313,13 +347,44 @@ mod tests {
     async fn test_create_invoice_link() {
         //bot star donatoin
         let token = "7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs";
+        let token = MAIN_BOT_TOKEN;
         let payload = json::CreateInvoiceQueryParam {
             title: "Test Donation".to_string(),
             description: "Test Donation Description".to_string(),
             payload: "Test Donation Payload".to_string(),
-            amount: 400,
+            amount: 1,
         };
         let invoice_url = create_invoice_link(&token, &payload).await.unwrap();
         println!("invoice_url: {}", invoice_url);
+    }
+
+    #[tokio::test]
+    async fn test_send_message() {
+        let token = MAIN_BOT_TOKEN;
+        let chat_id = MAIN_BOT_OWNER;
+        let text = "Test message from send_message method";
+
+        // Test simple message without reply markup
+        let result = send_message(token, chat_id, text, None).await;
+        assert!(result.is_ok());
+
+        // Test message with inline keyboard
+        let inline_keyboard = serde_json::json!({
+            "inline_keyboard": [
+                [{
+                    "text": "Test Button",
+                    "callback_data": "test_callback"
+                }]
+            ]
+        });
+
+        let result_with_markup = send_message(
+            token,
+            chat_id,
+            "Test message with inline keyboard",
+            Some(inline_keyboard),
+        )
+        .await;
+        assert!(result_with_markup.is_ok());
     }
 }

@@ -1,17 +1,21 @@
 use anyhow::{anyhow, Result};
+
+use aws_sdk_s3::Client;
 use lru::LruCache;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
 use crate::{
-    api,
     db::{DBBot, DataBase},
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
-    CACHE_SIZE, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP, MAX_DAYS_SINCE_LAST_PAYMENT, MAX_STARS_DEBT,
+    tg_api, CACHE_SIZE, DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
+    MAX_STARS_DEBT,
 };
-use crate::{json, HTML_LAYER, PROCENT_FOR_MAIN_BOT, ROOM_CAPACITY};
+use crate::{
+    json, s3_api, DAYS_SINCE_LAST_PAYMENT_FOR_NOTIFICATION, HTML_BLOCKED_APP, HTML_LAYER,
+    PROCENT_FOR_MAIN_BOT, ROOM_CAPACITY,
+};
 
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
@@ -53,6 +57,7 @@ pub struct AppState {
     pub cache: Mutex<LruCache<String, DBBot>>,
     pub db: DataBase,
     pub rooms: RwLock<Rooms>,
+    pub s3_client: Client,
 }
 
 impl AppState {
@@ -65,7 +70,14 @@ impl AppState {
         let cache = Mutex::new(LruCache::new(CACHE_SIZE));
         let rooms = RwLock::new(HashMap::new());
 
-        Self { cache, db, rooms }
+        let s3_client = s3_api::s3_client().await;
+
+        Self {
+            cache,
+            db,
+            rooms,
+            s3_client,
+        }
     }
 
     pub async fn prepare(&self) -> Result<()> {
@@ -103,12 +115,19 @@ impl AppState {
         //     Err(e) => println!("Error: {}", e),
         // }
 
-        self.update_mini_app_source(MAIN_BOT_ID.to_string())
+        self.update_mini_app_source(MAIN_BOT_ID.to_string(), false)
             .await
             .unwrap();
 
         //without main bot
-        self.update_mini_app_sources().await.unwrap();
+        // self.update_mini_app_sources().await.unwrap();
+
+        // self.update_bot_config(
+        //     "star_donation".to_string(),
+        //     r#"{"api_url":"https://advanced-oddly-herring.ngrok-free.app/star_donation","donation_buttons":[{"name":"Don","description":"Des","amount":100,"source_id":2,"invoice_url":"https://t.me/$OQObZTEgIUtaDAAACmTE96LGblY"},{"name":"Don1","description":"Des","amount":111,"source_id":1,"invoice_url":"https://t.me/$ykAAOjEgKUs-DgAALWTTF70j1Ok"},{"name":"1 star","description":"","amount":1,"source_id":3,"invoice_url":"https://t.me/$iXdEk5vtcUv7EgAAWHixDhjrkKk"}],"title":""}"#.to_string(),
+        // )
+        // .await
+        // .unwrap();
 
         self.update_layer_source(
             "star_donation".to_string(),
@@ -120,9 +139,12 @@ impl AppState {
         Ok(())
     }
 
-    //todo add new bot: set cmd,
+    //todo write flow for add bot
+    // whats need to do with tg api?
+    // whats needs to do with s3?
+    // whats needs to do with db and app_state?
     pub async fn add_bot(&self, token: &str, owner: u64) -> Result<(String, String)> {
-        let bot_info = api::get_bot_info(token).await?;
+        let bot_info = tg_api::get_bot_info(token).await?;
         let bot_info = if bot_info.ok {
             bot_info.result.unwrap()
         } else {
@@ -145,9 +167,7 @@ impl AppState {
 
         let api_url = format!("{}{}/", dotenv!("DOMAIN"), bot_id);
 
-        let app_config = format!(
-            r#"{{"header_text":"Yoml | Best stream app","buttons":[],"api_url":"{api_url}","page_description": "Here you can make star donation for Streamer","owner":{owner},"admins":[{owner}]}}"#
-        );
+        let app_config = format!(r#"{{"buttons":[],"owner":{owner},"admins":[{owner}]}}"#);
         let admins = vec![owner, 487373];
 
         let button_text = if bot_id == MAIN_BOT_ID {
@@ -156,13 +176,13 @@ impl AppState {
             "Donate"
         };
         let button_url = format!("{api_url}app");
-        api::set_menu_button(token, button_text, &button_url).await?;
+        tg_api::set_menu_button(token, button_text, &button_url).await?;
 
         let webhook_url = format!("{api_url}webhook");
-        let secret_token = api::generate_secret_token();
-        api::set_tg_webhook(token, &webhook_url, &secret_token).await?;
+        let secret_token = tg_api::generate_secret_token();
+        tg_api::set_tg_webhook(token, &webhook_url, &secret_token).await?;
 
-        api::set_bot_commands(
+        tg_api::set_bot_commands(
             token,
             &vec![
                 json::BotCommand {
@@ -185,7 +205,7 @@ impl AppState {
         )
         .await?;
 
-        let ws_token = api::generate_layer_token();
+        let ws_token = tg_api::generate_layer_token();
 
         let bot: DBBot = DBBot::new(
             bot_id.to_string(),
@@ -199,7 +219,8 @@ impl AppState {
 
         self.db.insert_bot(bot, app_config).await?;
 
-        self.update_mini_app_source(bot_id.to_string()).await?;
+        self.update_mini_app_source(bot_id.to_string(), false)
+            .await?;
 
         Ok((bot_id.to_string(), bot_info.username))
     }
@@ -214,10 +235,10 @@ impl AppState {
         let tg_api_url = format!("https://api.telegram.org/bot{}/", MAIN_BOT_TOKEN);
 
         let webhook_url = format!("{api_url}webhook");
-        let secret_token = api::generate_secret_token();
+        let secret_token = tg_api::generate_secret_token();
         // api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
 
-        let ws_token = api::generate_layer_token();
+        let ws_token = tg_api::generate_layer_token();
 
         let bot: DBBot = DBBot::new(
             MAIN_BOT_ID.to_string(),
@@ -257,8 +278,7 @@ impl AppState {
     }
 
     pub async fn update_bot_config(&self, bot_id: String, app_config: String) -> Result<()> {
-        self.update_mini_app_source_with_config(&bot_id, &app_config)
-            .await?;
+        self.upload_mini_app_html(&bot_id, &app_config).await?;
 
         self.db.update_bot_config(bot_id, app_config).await?;
 
@@ -314,26 +334,20 @@ impl AppState {
         Ok(())
     }
 
-    //todo rename
-    //todo move path to env?
-    pub async fn update_mini_app_source(&self, bot_id: String) -> Result<()> {
-        let path = format!("server/src/mini_app_sources/{}.html", bot_id);
+    pub async fn update_mini_app_source(&self, bot_id: String, blocked: bool) -> Result<()> {
+        let s3_path = format!("bots/{bot_id}/index.html");
 
         let html = if bot_id == MAIN_BOT_ID {
             HTML_MAIN_BOT_MINI_APP.to_string()
+        } else if blocked {
+            HTML_BLOCKED_APP.to_string()
         } else {
             let config = self.db.get_bot_config(bot_id).await?;
             HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &config)
         };
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&path)
+        self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
-
-        file.write_all(html.as_bytes()).await?;
 
         Ok(())
     }
@@ -347,58 +361,42 @@ impl AppState {
                 continue;
             }
 
-            let path = format!("server/src/mini_app_sources/{}.html", bot_id);
+            let s3_path = format!("bots/{bot_id}/index.html");
             let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
 
-            let mut file = OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .open(&path)
+            self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
                 .await?;
-
-            file.write_all(html.as_bytes()).await?;
         }
 
         Ok(())
     }
 
-    //todo must be private, now can use in handlers
-    async fn update_mini_app_source_with_config(
-        &self,
-        bot_id: &str,
-        app_config: &str,
-    ) -> Result<()> {
+    /// Upload mini app HTML to S3 with the given configuration
+    async fn upload_mini_app_html(&self, bot_id: &str, app_config: &str) -> Result<()> {
         if bot_id == MAIN_BOT_ID {
             return Err(anyhow::anyhow!("Cant update main bot app"));
         }
-
-        let path = format!("server/src/mini_app_sources/{}.html", bot_id);
+        let s3_path = format!("bots/{bot_id}/index.html");
 
         let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&path)
+        self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
-        file.write_all(html.as_bytes()).await?;
 
         Ok(())
     }
 
     pub async fn set_menu_button_name(&self, bot_id: &str, name: &str) -> Result<()> {
         let mut tg_api_url = "".to_string();
-        let mut button_url = "".to_string();
 
         self.with_record(bot_id, |bot_row| {
             tg_api_url = format!("https://api.telegram.org/bot{}/", bot_row.token);
-            button_url = format!("{}{}/app", dotenv!("DOMAIN"), bot_row.id);
         })
         .await?;
 
-        api::set_menu_button(&tg_api_url, name, &button_url).await?;
+        let button_url = format!("{}/bots/{bot_id}/index.html", dotenv!("S3_ENDPOINT_URL"));
+
+        tg_api::set_menu_button(&tg_api_url, name, &button_url).await?;
         Ok(())
     }
 
@@ -447,7 +445,7 @@ impl AppState {
             .await?;
 
         if is_owner? {
-            let user_info = api::get_user_info(MAIN_BOT_TOKEN, admin_id).await?;
+            let user_info = tg_api::get_user_info(MAIN_BOT_TOKEN, admin_id).await?;
             if user_info.ok {
                 let user_data = user_info.result.unwrap();
                 let tma_user_data = json::TMAUserData {
@@ -500,6 +498,8 @@ impl AppState {
     }
 
     pub async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
+        self.remove_folder_from_s3(&format!("bots/{bot_id}/"))
+            .await?;
         self.db.remove_bot(user_id, bot_id).await?;
         Ok(())
     }
@@ -574,7 +574,7 @@ impl AppState {
     }
 
     pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
-        let layer_token = api::generate_layer_token();
+        let layer_token = tg_api::generate_layer_token();
 
         self.db
             .update_bot_layer_token(bot_id.to_string(), layer_token)
@@ -602,7 +602,7 @@ impl AppState {
         self.db
             .decrease_debt(bot_id.to_string(), stars_amount)
             .await?;
-        self.set_bot_blocked(bot_id, false).await?;
+        self.update_bot_blocked_status(bot_id, false).await?;
         Ok(())
     }
 
@@ -615,8 +615,9 @@ impl AppState {
 
         if let Some(last_payment_date) = last_payment_date {
             let days_since_payment = days_since_last_payment(last_payment_date);
-            if days_since_payment > MAX_DAYS_SINCE_LAST_PAYMENT && star_debt > MAX_STARS_DEBT {
-                self.set_bot_blocked(bot_id, true).await?;
+            if days_since_payment > DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK && star_debt > MAX_STARS_DEBT
+            {
+                self.update_bot_blocked_status(bot_id, true).await?;
                 return Ok(true);
             }
         }
@@ -624,12 +625,51 @@ impl AppState {
         Ok(false)
     }
 
+    /// Process debt status for all bots except main bot
+    pub async fn process_bots_debt_status(&self) -> Result<()> {
+        // Get debt parameters for all bots except main bot in one query
+        let bots_debt_params = self.db.get_all_bots_debt_params().await?;
+
+        for bot_debt_params in bots_debt_params {
+            if bot_debt_params.blocked {
+                continue;
+            }
+
+            if let Some(last_payment_date) = bot_debt_params.last_payment_date {
+                let days_since_payment = days_since_last_payment(last_payment_date);
+
+                if days_since_payment == DAYS_SINCE_LAST_PAYMENT_FOR_NOTIFICATION {
+                    self.send_payment_notification_to_owner(bot_debt_params.id.to_string())
+                        .await?;
+                    continue;
+                }
+
+                if days_since_payment > DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK
+                    && bot_debt_params.star_debt > MAX_STARS_DEBT
+                {
+                    self.update_bot_blocked_status(bot_debt_params.id.to_string(), true)
+                        .await?;
+                }
+            } else if bot_debt_params.star_debt > MAX_STARS_DEBT {
+                self.update_bot_blocked_status(bot_debt_params.id.to_string(), true)
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn get_debt_params(&self, bot_id: String) -> Result<(Option<u64>, f64, bool)> {
         self.db.debt_params(bot_id).await
     }
 
-    pub async fn set_bot_blocked(&self, bot_id: String, blocked: bool) -> Result<()> {
-        self.db.set_bot_blocked(bot_id, blocked).await
+    /// Update bot blocked status and update mini app source
+    pub async fn update_bot_blocked_status(&self, bot_id: String, blocked: bool) -> Result<()> {
+        self.db.set_bot_blocked(bot_id.to_string(), blocked).await?;
+
+        self.update_mini_app_source(bot_id, blocked).await?;
+
+        Ok(())
     }
 
     pub async fn generate_debt_invoice_url(&self, bot_id: String) -> Result<String> {
@@ -650,9 +690,19 @@ impl AppState {
             amount,
         };
 
-        let invoice_url = api::create_invoice_link(MAIN_BOT_TOKEN, &invoice_params).await?;
+        let invoice_url = tg_api::create_invoice_link(MAIN_BOT_TOKEN, &invoice_params).await?;
 
         Ok(invoice_url)
+    }
+
+    pub async fn send_payment_notification_to_owner(&self, bot_id: String) -> Result<()> {
+        let bot = self.db.get_bot(bot_id.clone()).await?;
+        let owner = bot.owner;
+        let token = bot.token;
+
+        tg_api::send_message(&token, owner, "Payment notification", None).await?;
+
+        Ok(())
     }
 }
 

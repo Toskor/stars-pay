@@ -33,7 +33,7 @@ class ApiClient {
         headers: {
           "Content-Type": "application/json;charset=utf-8",
           //todo remove
-          "ngrok-skip-browser-warning": "",
+          "ngrok-skip-browser-warning": "true",
           ...options.headers,
         },
       });
@@ -92,10 +92,6 @@ class ApiClient {
     userId: string,
     bot_id: string
   ): Promise<Blob | null> {
-    console.log(
-      "getAvatar start",
-      `${this.baseUrl}/${bot_id}/avatar/${userId}`
-    );
     try {
       const response = await fetch(
         `${this.baseUrl}/${bot_id}/avatar/${userId}`,
@@ -254,7 +250,11 @@ class ApiClient {
       headers: {
         "X-Telegram-InitData": initData,
       },
-      body: JSON.stringify({ target_bot_id: bot_id, amount: amount, media_source: mediaSource }),
+      body: JSON.stringify({
+        target_bot_id: bot_id,
+        amount: amount,
+        media_source: mediaSource,
+      }),
     });
   }
 }

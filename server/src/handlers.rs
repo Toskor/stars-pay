@@ -1,10 +1,7 @@
 use anyhow::Result;
 
 use axum::{
-    body::Body,
-    extract::{Json, Path, Query, Request, State},
-    http::HeaderValue,
-    response::{IntoResponse, Response},
+    body::Body, extract::{Json, Path, Query, Request, State}, http::HeaderValue, middleware::Next, response::{IntoResponse, Response}
 };
 use fastwebsockets::upgrade;
 use hmac::{Hmac, Mac};
@@ -18,7 +15,7 @@ use tower::{Service, ServiceExt};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    api::{self, bot_numeric_id_from_token},
+    tg_api::{self, bot_numeric_id_from_token},
     app_state::get_bot_id_from_username,
     http, json,
     main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
@@ -128,8 +125,13 @@ pub async fn update_config(
                 .get_bot_token(payload.target_bot_id.to_string())
                 .await
                 .unwrap();
-            let mut tma_app_config: json::TMAAppConfig =
-                serde_json::from_str(&payload.app_config).unwrap();
+            let Ok(mut tma_app_config) =
+                serde_json::from_str::<json::TMAAppConfig>(&payload.app_config) else {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": "Invalid app config"})),
+                    );
+                };
             generate_invoice_urls(&mut tma_app_config, &target_bot_token).await;
 
             let upd_res = state
@@ -170,7 +172,7 @@ async fn generate_invoice_urls(tma_app_config: &mut json::TMAAppConfig, token: &
             let amount = button.amount;
 
             let task = task::spawn(async move {
-                api::create_invoice_link(
+                tg_api::create_invoice_link(
                     &token,
                     &json::CreateInvoiceQueryParam {
                         title: name.clone(),
@@ -186,7 +188,6 @@ async fn generate_invoice_urls(tma_app_config: &mut json::TMAAppConfig, token: &
         }
     }
 
-    // Обрабатываем результаты задач
     for (index, task) in tasks {
         if let Ok(Ok(url)) = task.await {
             tma_app_config.donation_buttons[index].invoice_url = url;
@@ -224,7 +225,7 @@ pub async fn create_invoice(
                 );
             }
 
-            match api::create_invoice_link(&token, &payload).await {
+            match tg_api::create_invoice_link(&token, &payload).await {
                 Ok(url) => {
                     return (
                         StatusCode::OK,
@@ -248,62 +249,12 @@ pub async fn create_invoice(
     }
 }
 
-async fn serve_html_file(path: &str) -> Result<(HeaderMap, Body), (StatusCode, String)> {
-    let file = match File::open(path).await {
-        Ok(file) => Ok(file),
-        Err(_) => File::open("server/src/mini_app_sources/404.html").await,
-    };
-
-    match file {
-        Ok(file) => {
-            let stream = ReaderStream::new(file);
-            let body = Body::from_stream(stream);
-
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("text/html; charset=utf-8"),
-            );
-
-            Ok((headers, body))
-        }
-        Err(err) => Err((StatusCode::NOT_FOUND, format!("Not found: {}", err))),
-    }
-}
-
-pub async fn mini_app(
-    Path(bot_id): Path<String>,
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    if bot_id == MAIN_BOT_ID {
-        let path = format!("server/src/mini_app_sources/{}.html", bot_id);
-        return serve_html_file(&path).await;
-    }
-
-    match state.is_bot_blocked(bot_id.clone()).await {
-        Ok(true) => {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("text/html; charset=utf-8"),
-            );
-            Ok((headers, Body::from(HTML_BLOCKED_APP)))
-        }
-        Ok(false) => {
-            let path = format!("server/src/mini_app_sources/{}.html", bot_id);
-            serve_html_file(&path).await
-        }
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to check bot status".to_string(),
-        )),
-    }
-}
 
 pub async fn fetch_user_bots(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    println!("start fetch_user_bots");
     let security_check = state
         .with_record(MAIN_BOT_ID, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
@@ -388,14 +339,14 @@ fn process_owner_bots(
         let bot = bot.clone();
         let owner = web_app_user.clone();
         let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
-            let Ok(numeric_id) = api::bot_numeric_id_from_token(&bot.token) else {
+            let Ok(numeric_id) = tg_api::bot_numeric_id_from_token(&bot.token) else {
                 //unreachable, token format is incorrect, but token was verified before the bot was added to the db
                 return None;
             };
 
             let bot_info_task = tokio::spawn({
                 let token = bot.token.clone();
-                async move { api::get_bot_info(&token).await }
+                async move { tg_api::get_bot_info(&token).await }
             });
 
             // Process admin information
@@ -461,20 +412,20 @@ fn process_admin_bots(
         let bot = bot.clone();
         let mini_app_user = web_app_user.clone();
         let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
-            let Ok(numeric_id) = api::bot_numeric_id_from_token(&bot.token) else {
+            let Ok(numeric_id) = tg_api::bot_numeric_id_from_token(&bot.token) else {
                 //unreachable, token format is incorrect, token was verified before the bot was added to the db
                 return None;
             };
 
             let bot_info_task = tokio::spawn({
                 let token = bot.token.clone();
-                async move { api::get_bot_info(&token).await }
+                async move { tg_api::get_bot_info(&token).await }
             });
 
             let owner_info_task = tokio::spawn({
                 let token = bot.token.clone();
                 let owner_id = bot.owner;
-                async move { api::get_user_info(&token, owner_id).await }
+                async move { tg_api::get_user_info(&token, owner_id).await }
             });
 
             // Process admin information
@@ -567,7 +518,7 @@ async fn process_admin_info(
         let token = token.to_string();
         let admin_id = *admin_id;
         let admin_info_future = task::spawn(async move {
-            let admin_info = api::get_user_info(&token, admin_id).await;
+            let admin_info = tg_api::get_user_info(&token, admin_id).await;
             (admin_id, admin_info)
         });
         admin_futures.push(admin_info_future);
@@ -794,7 +745,7 @@ pub async fn avatar_url_handler(
         }
     };
 
-    let avatar_url_result = api::get_avatar_url(&token, user_id_parsed).await;
+    let avatar_url_result = tg_api::get_avatar_url(&token, user_id_parsed).await;
 
     match avatar_url_result {
         Ok(Some(avatar_url)) => {
@@ -1234,7 +1185,7 @@ pub async fn parse_update(
     state: &Arc<AppState>,
     bot_id: String,
 ) -> Result<Value> {
-    let tg_api_url = api::get_tg_api_url(token);
+    let tg_api_url = tg_api::get_tg_api_url(token);
     // println!("parse_update: {:?}", update);
     match &update.data {
         json::UpdateData::PreCheckoutQuery(pre_checkout_query) => {

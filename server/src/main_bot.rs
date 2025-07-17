@@ -1,10 +1,10 @@
 use std::{str::FromStr, sync::Arc};
 
 use anyhow::Result;
-use hyper::{HeaderMap, Uri};
+use hyper::Uri;
 use serde_json::Value;
 
-use crate::{api, app_state::AppState, http, json};
+use crate::{app_state::AppState, http, json, tg_api};
 
 pub const MAIN_BOT_ID: &str = "stardonationservice";
 pub const MAIN_BOT_TOKEN: &str = "***REMOVED***";
@@ -21,7 +21,7 @@ pub async fn parse_update(
     token: &str,
     state: &Arc<AppState>,
 ) -> Result<Value> {
-    let tg_api_url = api::get_tg_api_url(token);
+    let tg_api_url = tg_api::get_tg_api_url(token);
     match &update.data {
         json::UpdateData::Message(message) => {
             if let (Some(text), Some(chat)) = (message.text.as_deref(), message.chat.as_ref()) {
@@ -35,25 +35,9 @@ pub async fn parse_update(
                         }]
                     ]
                 });
-                let ans = serde_json::json!({
-                    // "method": "sendMessage", // field for webhook ans
-                    "text": text,
-                    "chat_id": chat_id,
-                    "reply_markup": inline_keyboard,
-                });
 
-                let uri = Uri::from_str(&format!("{}sendMessage", tg_api_url)).unwrap();
-                let headers: HeaderMap = HeaderMap::from_iter([(
-                    hyper::header::CONTENT_TYPE,
-                    hyper::header::HeaderValue::from_static("application/json"),
-                )]);
-
-                let res = http::post(&uri, Some(&headers), ans.to_string()).await?;
-                // if res.status == StatusCode::OK {
-                //     println!("sendMessage res: {}", res.to_str().unwrap());
-                // } else {
-                //     println!("sendMessage error: {}", res.to_str().unwrap());
-                // }
+                // Use the new send_message method
+                tg_api::send_message(token, chat_id, text, Some(inline_keyboard)).await?;
             }
         }
         json::UpdateData::PreCheckoutQuery(pre_checkout_query) => {
@@ -79,7 +63,10 @@ pub async fn parse_update(
 
             // Try to process payment if no error yet
             if error_message.is_none() {
-                if let Err(e) = state.process_payment(bot_id.clone(), stars_amount as i64).await {
+                if let Err(e) = state
+                    .process_payment(bot_id.clone(), stars_amount as i64)
+                    .await
+                {
                     println!("Payment processing for bot {} failed: {}", bot_id, e);
                     error_message = Some("Payment processing failed".to_string());
                 }
