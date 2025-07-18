@@ -3,3 +3,4 @@ target
 .vscode
 file.sh
 server/src/sounds/donation_sound.mp3
+.env

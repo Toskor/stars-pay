@@ -1,10 +1,6 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use async_rusqlite::{rusqlite::named_params, Connection};
 use rusqlite::functions::FunctionFlags;
-
-use crate::{app_state::UserRole, DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK, MAX_STARS_DEBT};
 
 #[derive(Debug, Clone)]
 pub struct DBBot {

@@ -332,9 +332,9 @@ mod tests {
     async fn test_get_avatar_url() {
         let token = MAIN_BOT_TOKEN;
         //@yuryk
-        let user_id = 487373;
+        // let user_id = 487373;
 
-        let user_id = 348135868;
+        // let user_id = 348135868;
 
         //bot star donatoin
         let user_id = 7792542554;
@@ -345,8 +345,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_invoice_link() {
-        //bot star donatoin
-        let token = "7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs";
         let token = MAIN_BOT_TOKEN;
         let payload = json::CreateInvoiceQueryParam {
             title: "Test Donation".to_string(),

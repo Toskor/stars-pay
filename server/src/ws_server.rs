@@ -1,22 +1,11 @@
 pub use anyhow::Result;
 
 use fastwebsockets::{upgrade, Frame, OpCode, Payload, WebSocketError};
-use http_body_util::Empty;
-use hyper::{
-    body::{Bytes, Incoming},
-    server::conn::http1,
-    service::service_fn,
-    Request, Response,
-};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::{
-    net::TcpListener,
-    sync::broadcast,
-    time::{sleep, timeout, Duration},
-};
+use tokio::time::{sleep, Duration};
 
-use crate::{app_state, json};
+use crate::json;
 
 fn get_next_client_id() -> usize {
     static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
@@ -148,107 +137,4 @@ pub async fn handle_client(
     app_state.remove_client_from_room(&bot_id, cid).await;
     println!("Client {} disconnected from bot_id: {}", cid, bot_id);
     Ok(())
-}
-
-//for testing ws server alone
-async fn server_upgrade(
-    mut req: Request<Incoming>,
-    event_tx: broadcast::Sender<(String, json::WSDonationEvent)>,
-    app_state: std::sync::Arc<crate::app_state::AppState>,
-    bot_id: String,
-) -> Result<Response<Empty<Bytes>>, WebSocketError> {
-    let (response, fut) = upgrade::upgrade(&mut req)?;
-
-    tokio::spawn(async move {
-        if let Err(e) = handle_client(fut, app_state, bot_id).await {
-            eprintln!("Error in websocket connection: {}", e);
-        }
-    });
-
-    return Ok(response);
-}
-
-//for testing ws server alone
-async fn start(
-    event_tx: broadcast::Sender<(String, json::WSDonationEvent)>,
-    addr: &str,
-    app_state: std::sync::Arc<crate::app_state::AppState>,
-) -> Option<u16> {
-    let listener = TcpListener::bind(addr).await.unwrap();
-    println!("start server with addr! {}", listener.local_addr().unwrap());
-    let port = listener.local_addr().ok().map(|a| a.port());
-
-    tokio::spawn({
-        async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                println!("ws server listener accept");
-
-                let service = service_fn(|req: Request<Incoming>| {
-                    let sender = event_tx.clone();
-                    let app_state = app_state.clone();
-
-                    // easier with axum
-                    // Extract bot_id from the request query parameters
-                    let bot_id = if let Some(query) = req.uri().query() {
-                        // Parse the query string
-                        query
-                            .split('&')
-                            .filter_map(|kv| {
-                                let mut parts = kv.splitn(2, '=');
-                                if let (Some(k), Some(v)) = (parts.next(), parts.next()) {
-                                    if k == "bot_id" {
-                                        return Some(v.to_string());
-                                    }
-                                }
-                                None
-                            })
-                            .next()
-                            .unwrap_or_else(|| {
-                                println!("No bot_id found in query params, using default");
-                                "123".to_string()
-                            })
-                    } else {
-                        println!("No query parameters found, using default bot_id");
-                        "123".to_string()
-                    };
-
-                    println!("WebSocket connection request with bot_id: {}", bot_id);
-
-                    async move { server_upgrade(req, sender, app_state, bot_id).await }
-                });
-
-                let io = hyper_util::rt::TokioIo::new(stream);
-
-                let conn_fut = http1::Builder::new()
-                    .serve_connection(io, service)
-                    .with_upgrades();
-                if let Err(e) = conn_fut.await {
-                    println!("err with conn_fut {e}");
-                }
-            }
-        }
-    });
-    port
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use tokio::sync::broadcast;
-
-    use crate::{app_state::AppState, json::WSDonationEvent, ws_server};
-
-    #[tokio::test]
-    async fn base() {
-        let (event_tx, _) = broadcast::channel::<(String, WSDonationEvent)>(100);
-        let app_state = Arc::new(AppState::new().await);
-        let port = ws_server::start(event_tx, "localhost:5002", app_state.clone())
-            .await
-            .expect("msg");
-
-        _ = tokio::signal::ctrl_c().await;
-
-        let rooms = app_state.rooms.read().await;
-        println!("Rooms after shutdown: {} rooms remaining", rooms.len());
-    }
 }

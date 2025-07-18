@@ -1,8 +1,5 @@
 use app_state::AppState;
 use axum::{
-    extract::Request,
-    middleware::{self, Next},
-    response::Response,
     routing::{get, post},
     Router,
 };
@@ -24,7 +21,6 @@ pub mod s3_api;
 mod tg_api;
 pub mod ws_server;
 
-const PATH_TO_DIST: &str = "../../tma-client/dist/src/pages";
 const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
 const HTML_MAIN_BOT_MINI_APP: &str =
     include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
@@ -111,10 +107,13 @@ async fn main() {
         axum::serve(listener, router).await.unwrap();
     });
 
-    let _task_for_check_bots_blocked = tokio::spawn(async move {
-        loop {
-            arc_app_state.process_bots_debt_status().await.unwrap();
-            tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 24)).await;
+    let _task_for_proccess_bots_debt = tokio::spawn({
+        let app_state = arc_app_state.clone();
+        async move {
+            loop {
+                app_state.process_bots_debt_status().await.unwrap();
+                tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 24)).await;
+            }
         }
     });
 
@@ -124,7 +123,7 @@ async fn main() {
 fn cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(
-            "https://s3.nl-ams.scw.cloud"
+            "https://tg-stars.s3-website.nl-ams.scw.cloud"
                 .parse::<axum::http::HeaderValue>()
                 .unwrap(),
         )

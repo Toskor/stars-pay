@@ -1,7 +1,9 @@
 use anyhow::Result;
 
 use axum::{
-    body::Body, extract::{Json, Path, Query, Request, State}, http::HeaderValue, middleware::Next, response::{IntoResponse, Response}
+    body::Body,
+    extract::{Json, Path, Query, State},
+    response::{IntoResponse, Response},
 };
 use fastwebsockets::upgrade;
 use hmac::{Hmac, Mac};
@@ -9,18 +11,16 @@ use hyper::{header, HeaderMap, StatusCode, Uri};
 use serde_json::Value;
 use sha2::Sha256;
 use std::{collections::HashMap, str::FromStr, sync::Arc};
-use tokio::{fs::File, sync::broadcast};
+use tokio::{fs::File, task};
 use tokio_util::io::ReaderStream;
-use tower::{Service, ServiceExt};
-use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    tg_api::{self, bot_numeric_id_from_token},
     app_state::get_bot_id_from_username,
     http, json,
-    main_bot::{self, MAIN_BOT_ID, MAIN_BOT_TOKEN},
-    ws_server::{self, handle_client},
-    AppState, HTML_BLOCKED_APP, HTML_MINI_APP, MAX_STARS_DEBT,
+    main_bot::{self, MAIN_BOT_ID},
+    tg_api::{self, bot_numeric_id_from_token},
+    ws_server::handle_client,
+    AppState, MAX_STARS_DEBT,
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
@@ -126,12 +126,13 @@ pub async fn update_config(
                 .await
                 .unwrap();
             let Ok(mut tma_app_config) =
-                serde_json::from_str::<json::TMAAppConfig>(&payload.app_config) else {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": "Invalid app config"})),
-                    );
-                };
+                serde_json::from_str::<json::TMAAppConfig>(&payload.app_config)
+            else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "Invalid app config"})),
+                );
+            };
             generate_invoice_urls(&mut tma_app_config, &target_bot_token).await;
 
             let upd_res = state
@@ -249,7 +250,6 @@ pub async fn create_invoice(
     }
 }
 
-
 pub async fn fetch_user_bots(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
@@ -339,7 +339,7 @@ fn process_owner_bots(
         let bot = bot.clone();
         let owner = web_app_user.clone();
         let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
-            let Ok(numeric_id) = tg_api::bot_numeric_id_from_token(&bot.token) else {
+            let Ok(_numeric_id) = tg_api::bot_numeric_id_from_token(&bot.token) else {
                 //unreachable, token format is incorrect, but token was verified before the bot was added to the db
                 return None;
             };
@@ -412,7 +412,7 @@ fn process_admin_bots(
         let bot = bot.clone();
         let mini_app_user = web_app_user.clone();
         let task: JoinHandle<Option<json::TMABotData>> = task::spawn(async move {
-            let Ok(numeric_id) = tg_api::bot_numeric_id_from_token(&bot.token) else {
+            let Ok(_numeric_id) = tg_api::bot_numeric_id_from_token(&bot.token) else {
                 //unreachable, token format is incorrect, token was verified before the bot was added to the db
                 return None;
             };
@@ -505,8 +505,6 @@ async fn process_admin_info(
     admin_ids: &Vec<u64>,
     mini_app_user: Option<&json::WebAppUser>,
 ) -> Vec<json::TMAUserData> {
-    use tokio::task::{self, JoinHandle};
-
     let mut admin_futures = Vec::new();
     for admin_id in admin_ids {
         if let Some(user) = mini_app_user {
@@ -706,7 +704,7 @@ pub async fn avatar_url_handler(
 ) -> impl IntoResponse {
     let security_check = state
         .with_record(&bot_id, |bot| {
-            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+            if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(bot.token.clone());
             }
             None
@@ -1061,7 +1059,6 @@ pub async fn ws_handler(
 }
 
 pub async fn layer(
-    headers: HeaderMap,
     Path(bot_id): Path<String>,
     Query(params): Query<json::LayerQueryParams>,
     State(state): State<Arc<AppState>>,
@@ -1197,7 +1194,7 @@ pub async fn parse_update(
             ))
             .unwrap();
 
-            if let Ok(res) = http::get(&uri, None).await {
+            if let Ok(_res) = http::get(&uri, None).await {
                 // example {"ok":true,"result":true}
                 // println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
 
@@ -1266,7 +1263,7 @@ pub async fn parse_update(
                 let _res = http::post(&uri, Some(&headers), ans.to_string()).await?;
             }
         }
-        _ => {}
+        // _ => {}
     }
 
     Ok(Value::Null)

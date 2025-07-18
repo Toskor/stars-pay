@@ -119,15 +119,12 @@ impl AppState {
             .await
             .unwrap();
 
+        self.update_mini_app_source("second_test_1".to_string(), true)
+            .await
+            .unwrap();
+
         //without main bot
         // self.update_mini_app_sources().await.unwrap();
-
-        // self.update_bot_config(
-        //     "star_donation".to_string(),
-        //     r#"{"api_url":"https://advanced-oddly-herring.ngrok-free.app/star_donation","donation_buttons":[{"name":"Don","description":"Des","amount":100,"source_id":2,"invoice_url":"https://t.me/$OQObZTEgIUtaDAAACmTE96LGblY"},{"name":"Don1","description":"Des","amount":111,"source_id":1,"invoice_url":"https://t.me/$ykAAOjEgKUs-DgAALWTTF70j1Ok"},{"name":"1 star","description":"","amount":1,"source_id":3,"invoice_url":"https://t.me/$iXdEk5vtcUv7EgAAWHixDhjrkKk"}],"title":""}"#.to_string(),
-        // )
-        // .await
-        // .unwrap();
 
         self.update_layer_source(
             "star_donation".to_string(),
@@ -167,7 +164,11 @@ impl AppState {
 
         let api_url = format!("{}{}/", dotenv!("DOMAIN"), bot_id);
 
-        let app_config = format!(r#"{{"buttons":[],"owner":{owner},"admins":[{owner}]}}"#);
+        let app_config = serde_json::to_string(&json::TMAAppConfig {
+            donation_buttons: vec![],
+            title: "".to_string(),
+        })?;
+
         let admins = vec![owner, 487373];
 
         let button_text = if bot_id == MAIN_BOT_ID {
@@ -231,10 +232,10 @@ impl AppState {
                 "Main bot StarDonationService already exists"
             ));
         }
-        let api_url = format!("{}{}/", dotenv!("DOMAIN"), MAIN_BOT_ID);
-        let tg_api_url = format!("https://api.telegram.org/bot{}/", MAIN_BOT_TOKEN);
+        // let api_url = format!("{}{}/", dotenv!("DOMAIN"), MAIN_BOT_ID);
+        // let tg_api_url = format!("https://api.telegram.org/bot{}/", MAIN_BOT_TOKEN);
 
-        let webhook_url = format!("{api_url}webhook");
+        // let webhook_url = format!("{api_url}webhook");
         let secret_token = tg_api::generate_secret_token();
         // api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
 
@@ -278,7 +279,8 @@ impl AppState {
     }
 
     pub async fn update_bot_config(&self, bot_id: String, app_config: String) -> Result<()> {
-        self.upload_mini_app_html(&bot_id, &app_config).await?;
+        self.update_mini_app_source_with_config(&bot_id, &app_config)
+            .await?;
 
         self.db.update_bot_config(bot_id, app_config).await?;
 
@@ -335,7 +337,7 @@ impl AppState {
     }
 
     pub async fn update_mini_app_source(&self, bot_id: String, blocked: bool) -> Result<()> {
-        let s3_path = format!("bots/{bot_id}/index.html");
+        let s3_path = format!("apps/{bot_id}/index.html");
 
         let html = if bot_id == MAIN_BOT_ID {
             HTML_MAIN_BOT_MINI_APP.to_string()
@@ -361,7 +363,7 @@ impl AppState {
                 continue;
             }
 
-            let s3_path = format!("bots/{bot_id}/index.html");
+            let s3_path = format!("apps/{bot_id}/index.html");
             let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
 
             self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
@@ -372,11 +374,15 @@ impl AppState {
     }
 
     /// Upload mini app HTML to S3 with the given configuration
-    async fn upload_mini_app_html(&self, bot_id: &str, app_config: &str) -> Result<()> {
+    async fn update_mini_app_source_with_config(
+        &self,
+        bot_id: &str,
+        app_config: &str,
+    ) -> Result<()> {
         if bot_id == MAIN_BOT_ID {
             return Err(anyhow::anyhow!("Cant update main bot app"));
         }
-        let s3_path = format!("bots/{bot_id}/index.html");
+        let s3_path = format!("apps/{bot_id}/index.html");
 
         let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
 
@@ -394,7 +400,7 @@ impl AppState {
         })
         .await?;
 
-        let button_url = format!("{}/bots/{bot_id}/index.html", dotenv!("S3_ENDPOINT_URL"));
+        let button_url = format!("{}/apps/{bot_id}/index.html", dotenv!("S3_WEBSITE"));
 
         tg_api::set_menu_button(&tg_api_url, name, &button_url).await?;
         Ok(())
@@ -498,7 +504,7 @@ impl AppState {
     }
 
     pub async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
-        self.remove_folder_from_s3(&format!("bots/{bot_id}/"))
+        self.remove_folder_from_s3(&format!("apps/{bot_id}/"))
             .await?;
         self.db.remove_bot(user_id, bot_id).await?;
         Ok(())
