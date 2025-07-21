@@ -1058,74 +1058,6 @@ pub async fn ws_handler(
     }
 }
 
-pub async fn layer(
-    Path(bot_id): Path<String>,
-    Query(params): Query<json::LayerQueryParams>,
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&bot_id, |bot| {
-            //ws_token is uuid
-            //if first char of ws_token is equal to param t
-            if bot.ws_token.chars().nth(0).unwrap().to_string() == params.t {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .await;
-
-    match security_check {
-        Ok(Some(_)) => {
-            let path = format!("server/src/layer_sources/{}.html", bot_id);
-
-            //if file does not exist need to update_layer_source and then try to open
-            let file = match File::open(&path).await {
-                Ok(file) => Ok(file),
-                Err(_) => {
-                    let ws_url = state.generate_ws_url(&bot_id).await.unwrap();
-                    state
-                        .update_layer_source(bot_id.clone(), &ws_url)
-                        .await
-                        .unwrap();
-                    File::open(path).await
-                }
-            };
-
-            match file {
-                Ok(file) => {
-                    let stream = ReaderStream::new(file);
-                    let body = axum::body::Body::from_stream(stream);
-
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                        .body(body)
-                        .unwrap()
-                }
-                Err(err) => {
-                    return Response::builder()
-                        .status(StatusCode::NOT_FOUND)
-                        .body(Body::from(format!("Not found: {}", err)))
-                        .unwrap();
-                }
-            }
-        }
-        Ok(None) => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(Body::from("Security check failure while getting layer"))
-                .unwrap();
-        }
-        Err(e) => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(e.to_string()))
-                .unwrap();
-        }
-    }
-}
-
 // #[axum::debug_handler]
 pub async fn webhook_handler(
     headers: HeaderMap,
@@ -1262,8 +1194,7 @@ pub async fn parse_update(
 
                 let _res = http::post(&uri, Some(&headers), ans.to_string()).await?;
             }
-        }
-        // _ => {}
+        } // _ => {}
     }
 
     Ok(Value::Null)

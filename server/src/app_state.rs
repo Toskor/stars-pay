@@ -4,7 +4,6 @@ use aws_sdk_s3::Client;
 use lru::LruCache;
 use std::collections::HashMap;
 use tokio::sync::{broadcast, Mutex, RwLock};
-use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
 use crate::{
     db::{DBBot, DataBase},
@@ -126,9 +125,17 @@ impl AppState {
         //without main bot
         // self.update_mini_app_sources().await.unwrap();
 
-        self.update_layer_source(
+        let ws_token = self
+            .get_bot_ws_token("star_donation".to_string())
+            .await
+            .unwrap();
+        self.update_layer_source_s3(
             "star_donation".to_string(),
-            &self.generate_ws_url("star_donation").await.unwrap(),
+            &ws_token,
+            &self
+                .generate_ws_url_with_token("star_donation", &ws_token)
+                .await
+                .unwrap(),
         )
         .await
         .unwrap();
@@ -212,7 +219,7 @@ impl AppState {
             bot_id.to_string(),
             token.to_string(),
             secret_token,
-            ws_token,
+            ws_token.to_string(),
             owner,
             admins,
             false,
@@ -221,6 +228,11 @@ impl AppState {
         self.db.insert_bot(bot, app_config).await?;
 
         self.update_mini_app_source(bot_id.to_string(), false)
+            .await?;
+
+        // Create layer HTML file in S3
+        let ws_url = self.generate_ws_url_with_token(&bot_id, &ws_token).await?;
+        self.update_layer_source_s3(bot_id.to_string(), &ws_token, &ws_url)
             .await?;
 
         Ok((bot_id.to_string(), bot_info.username))
@@ -288,50 +300,64 @@ impl AppState {
     }
 
     pub async fn generate_layer_url(&self, bot_id: &str) -> Result<String> {
-        let t = self
-            .get_bot_ws_token(bot_id.to_string())
-            .await?
-            .chars()
-            .nth(0)
-            .unwrap()
-            .to_string();
-        let domain = dotenv!("DOMAIN");
-        let layer_url = format!("{domain}{bot_id}/layer?t={t}");
-
-        Ok(layer_url)
-    }
-
-    pub async fn generate_layer_url_with_t(&self, bot_id: &str, t: &str) -> Result<String> {
-        let domain = dotenv!("DOMAIN");
-        let layer_url = format!("{domain}{bot_id}/layer?t={t}");
-
-        Ok(layer_url)
-    }
-
-    pub async fn generate_ws_url(&self, bot_id: &str) -> Result<String> {
         let ws_token = self.get_bot_ws_token(bot_id.to_string()).await?;
+        self.generate_layer_url_with_token(bot_id, &ws_token).await
+    }
+
+    pub async fn generate_layer_url_with_token(
+        &self,
+        bot_id: &str,
+        ws_token: &str,
+    ) -> Result<String> {
+        let s3_path = self.generate_layer_s3_path(bot_id, ws_token).await?;
+        let s3_website = dotenv!("S3_WEBSITE");
+        let layer_url = format!("{}/{}", s3_website, s3_path);
+
+        Ok(layer_url)
+    }
+
+    pub async fn generate_ws_url_with_token(&self, bot_id: &str, ws_token: &str) -> Result<String> {
         let domain = dotenv!("WS_DOMAIN");
         let ws_url = format!("{domain}ws/{bot_id}?ws_token={ws_token}");
 
         Ok(ws_url)
     }
 
-    pub async fn update_layer_source(&self, bot_id: String, ws_url: &str) -> Result<()> {
-        let path = format!("server/src/layer_sources/{}.html", bot_id);
+    /// Generate layer file path in S3 using bot_id and first 4 chars of ws_token
+    pub async fn generate_layer_s3_path(&self, bot_id: &str, ws_token: &str) -> Result<String> {
+        let uuid = ws_token.chars().take(4).collect::<String>();
+        Ok(format!("layers/{}-{}.html", bot_id, uuid))
+    }
+
+    /// Create or update layer HTML file in S3
+    pub async fn update_layer_source_s3(
+        &self,
+        bot_id: String,
+        ws_token: &str,
+        ws_url: &str,
+    ) -> Result<()> {
+        let s3_path = self.generate_layer_s3_path(&bot_id, ws_token).await?;
 
         let html = HTML_LAYER.to_string().replace(
             r#"{"json_to_replace":""}"#,
             &format!(r#"{{"ws_url": "{}"}}"#, ws_url),
         );
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&path)
+        self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
 
-        file.write_all(html.as_bytes()).await?;
+        Ok(())
+    }
+
+    /// Remove old layer file from S3 (used when refreshing tokens)
+    pub async fn remove_old_layer_file(&self, bot_id: &str, old_ws_token: &str) -> Result<()> {
+        let old_uuid = old_ws_token.chars().take(4).collect::<String>();
+        let old_s3_path = format!("layers/{}-{}.html", bot_id, old_uuid);
+
+        if self.file_exists_in_s3(&old_s3_path).await? {
+            println!("Removing old layer file from S3: {}", old_s3_path);
+            self.remove_file_from_s3(&old_s3_path).await?;
+        }
 
         Ok(())
     }
@@ -506,6 +532,12 @@ impl AppState {
     pub async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
         self.remove_folder_from_s3(&format!("apps/{bot_id}/"))
             .await?;
+
+        // Remove layer files (try to remove current layer file)
+        if let Ok(ws_token) = self.get_bot_ws_token(bot_id.to_string()).await {
+            let _ = self.remove_old_layer_file(&bot_id, &ws_token).await;
+        }
+
         self.db.remove_bot(user_id, bot_id).await?;
         Ok(())
     }
@@ -580,10 +612,23 @@ impl AppState {
     }
 
     pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
-        let layer_token = tg_api::generate_layer_token();
+        // Get old token before updating to remove old file
+        let old_ws_token = self.get_bot_ws_token(bot_id.to_string()).await?;
+
+        let new_layer_token = tg_api::generate_layer_token();
+
+        // Create new layer file in S3
+        let ws_url = self
+            .generate_ws_url_with_token(&bot_id, &new_layer_token)
+            .await?;
+        self.update_layer_source_s3(bot_id.to_string(), &new_layer_token, &ws_url)
+            .await?;
+
+        // Remove old layer file from S3
+        self.remove_old_layer_file(&bot_id, &old_ws_token).await?;
 
         self.db
-            .update_bot_layer_token(bot_id.to_string(), layer_token)
+            .update_bot_layer_token(bot_id.to_string(), new_layer_token)
             .await?;
 
         let rooms = self.rooms.read().await;
@@ -591,9 +636,6 @@ impl AppState {
             tx.send(json::RoomMessage::CloseRoom(bot_id.to_string()))
                 .unwrap();
         }
-
-        let ws_url = self.generate_ws_url(&bot_id).await?;
-        self.update_layer_source(bot_id, &ws_url).await?;
 
         Ok(())
     }

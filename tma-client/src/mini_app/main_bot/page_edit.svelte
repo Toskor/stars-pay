@@ -188,22 +188,15 @@
   }
 
   function handleRefreshLayerToken() {
-    app?.showPopup({
-      title: "Refresh Layer Token",
-      message:
-        "Are you sure you want to refresh the layer token? This action disables all layers and requires an update to the Layer URL.",
-      buttons: [
-        {
-          type: "cancel",
-        },
-        {
-          type: "ok",
-          onclick: () => {
-            queryRefreshLayerToken();
-          },
-        },
-      ],
-    });
+    app?.showConfirm(
+      "Are you sure you want to refresh the layer token? This action disables all layers and requires an update to the Layer URL.",
+      (confirmed: boolean) => {
+        if (confirmed) {
+          console.log("Refreshing layer token");
+          queryRefreshLayerToken();
+        }
+      }
+    );
   }
 
   async function queryRefreshLayerToken() {

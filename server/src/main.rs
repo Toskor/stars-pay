@@ -55,7 +55,6 @@ async fn main() {
             get(handlers::avatar_url_handler),
         )
         .route("/:bot_id/config", post(handlers::config_handler))
-        .route("/:bot_id/layer", get(handlers::layer))
         //only for owner and admins
         .route("/:bot_id/updateConfig", post(handlers::update_config))
         //only for owner and admins
