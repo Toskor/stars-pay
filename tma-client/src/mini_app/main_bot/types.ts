@@ -6,6 +6,7 @@ export type Page =
   | "create"
   | "change_token"
   | "manage_donation_buttons"
+  | "add_donation_button"
   | "preview_stream_bot"
   | "add_admin";
 

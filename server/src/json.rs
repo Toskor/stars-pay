@@ -247,7 +247,7 @@ pub struct ConfigQueryParam {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct TMAAppConfig {
     pub donation_buttons: Vec<DonationButton>,
-    pub title: String,
+    pub title: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

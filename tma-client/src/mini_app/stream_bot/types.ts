@@ -6,7 +6,7 @@ export const source_pool = [
 ];
 
 export type PreviewData = {
-  title: string;
+  title?: string;
   donation_buttons: DonationButton[];
 };
 

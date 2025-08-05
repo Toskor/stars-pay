@@ -11,6 +11,7 @@
   import PageCreate from "./page_create.svelte";
   import PageChangeToken from "./page_change_token.svelte";
   import PageManageDonationButtons from "./page_manage_donation_buttons.svelte";
+  import PageAddDonationButton from "./page_add_donation_button.svelte";
   import PageAddAdmin from "./page_add_admin.svelte";
   import PagePreviewStreamBot from "./page_preview_stream_bot.svelte";
 
@@ -23,7 +24,13 @@
 
   function navigateTo(page: Page, bot?: Bot) {
     currentPage = page;
-    if ((page === "edit" || page === "change_token") && bot) {
+    if (
+      (page === "edit" ||
+        page === "change_token" ||
+        page === "manage_donation_buttons" ||
+        page === "add_donation_button") &&
+      bot
+    ) {
       selectedBot = bot;
     }
     if (app) {
@@ -79,6 +86,8 @@
     <PageChangeToken {navigateTo} bot={selectedBot} />
   {:else if currentPage === "manage_donation_buttons"}
     <PageManageDonationButtons {navigateTo} bot={selectedBot} />
+  {:else if currentPage === "add_donation_button"}
+    <PageAddDonationButton {navigateTo} bot={selectedBot} />
   {:else if currentPage === "preview_stream_bot"}
     <PagePreviewStreamBot {navigateTo} bot={selectedBot} />
   {:else if currentPage === "add_admin"}

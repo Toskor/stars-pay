@@ -1,6 +1,7 @@
 import { get, writable, type Writable } from "svelte/store";
 import type { MainPageProps } from "./types";
 import { getControlledBots, getAvatar } from "./queries";
+import type { DonationButton } from "../stream_bot/types";
 
 export type BotsStoreType = {
   isLoaded: boolean;
@@ -23,6 +24,50 @@ export const botsStore: Writable<{
   data: null,
   loadTime: null,
 });
+
+export function getDonationButtonsLen(botId: string): number {
+  const store = get(botsStore);
+  if (!store.data) return 0;
+  return (
+    store.data.bots.find((b) => b.id === botId)?.preview_data?.donation_buttons
+      .length || 0
+  );
+}
+
+export function addDonationButtonToBot(
+  botId: string,
+  newButtons: DonationButton[]
+) {
+  botsStore.update((store) => {
+    if (!store.data) return store;
+
+    const updatedBots = store.data.bots.map((bot) => {
+      if (bot.id === botId) {
+        const updatedPreviewData = {
+          ...bot.preview_data,
+          donation_buttons: [
+            ...(bot.preview_data?.donation_buttons || []),
+            ...newButtons,
+          ],
+        };
+
+        return {
+          ...bot,
+          preview_data: updatedPreviewData,
+        };
+      }
+      return bot;
+    });
+
+    return {
+      ...store,
+      data: {
+        ...store.data,
+        bots: updatedBots,
+      },
+    };
+  });
+}
 
 export async function loadBotsData(initData: string): Promise<void> {
   const appStartTime = performance.now();

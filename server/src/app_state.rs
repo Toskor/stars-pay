@@ -173,7 +173,7 @@ impl AppState {
 
         let app_config = serde_json::to_string(&json::TMAAppConfig {
             donation_buttons: vec![],
-            title: "".to_string(),
+            title: None,
         })?;
 
         let admins = vec![owner, 487373];
