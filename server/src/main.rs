@@ -90,6 +90,10 @@ async fn main() {
             "/stardonationservice/makeTestDonation",
             post(handlers::make_test_donation),
         )
+        .route(
+            "/stardonationservice/uploadImage",
+            post(handlers::upload_image),
+        )
         .route("/sound/:sound_name", get(handlers::sound_handler))
         // ws server
         // exmple url: wss://host/ws/bot_username?ws_token=1234567890
@@ -121,14 +125,21 @@ async fn main() {
 
 fn cors_layer() -> CorsLayer {
     CorsLayer::new()
+        // .allow_origin(Any)
         .allow_origin(
             "https://tg-stars.s3-website.nl-ams.scw.cloud"
                 .parse::<axum::http::HeaderValue>()
                 .unwrap(),
         )
-        .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        // .allow_methods(Any)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::OPTIONS,
+        ])
         //todo mb make more strict
         .allow_headers(Any)
+        .allow_credentials(false)
 }
 
 #[cfg(test)]

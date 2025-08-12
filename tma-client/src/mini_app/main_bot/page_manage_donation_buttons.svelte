@@ -5,7 +5,7 @@
     Button,
     Divider,
     Title,
-    Text,
+    Caption,
     Section,
     SectionFooter,
     List,
@@ -13,6 +13,7 @@
     DeleteIcon,
     SectionHeader,
     PremiumStarIcon,
+    Image,
   } from "telegram-ui";
   import { addDonationButtonToBot, botsStore } from "./store";
   import "telegram-ui/styles";
@@ -79,7 +80,7 @@
 
     bot!.preview_data = preview_data;
 
-    hasChanges = true;
+    handleUpdateConfig();
   };
 
   const handleUpdateConfig = () => {
@@ -144,7 +145,7 @@
     Preview
   </Button>
 
-  <Button
+  <!-- <Button
     mode="filled"
     size="m"
     onclick={handleUpdateConfig}
@@ -152,7 +153,7 @@
     disabled={!hasChanges}
   >
     Confirm
-  </Button>
+  </Button> -->
 
   <Button mode="filled" size="m" onclick={handleTestDonation}>
     Test Donation
@@ -174,7 +175,11 @@
     <List>
       {#if preview_data && preview_data.donation_buttons.length > 0}
         {#each preview_data.donation_buttons as button (button.id)}
-          <Cell>
+          <Cell style="padding: 0px;">
+            {#snippet before()}
+              <Image src={button.source_url} size={48} />
+            {/snippet}
+
             {button.name}
 
             {#snippet subhead()}
@@ -206,12 +211,12 @@
   </Section>
 
   <SectionFooter centered={false}>
-    <Text>
+    <Caption weight={3} level={1}>
       Donation buttons allow your viewers to support your bot with predefined
       amounts.
       <br />
       You can add up to 10 donation buttons with different amounts and labels.
-    </Text>
+    </Caption>
   </SectionFooter>
 </List>
 

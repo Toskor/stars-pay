@@ -125,7 +125,7 @@
 
       <Image
         alt={button.name}
-        src={source_pool[button.source_id]}
+        src={button.source_url}
         style="width: 100%; height: 230px; object-fit: cover; display: block;"
       />
       <CardCell

@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 
-axum = {version = "0.7", features = ["tokio", "http1", "macros"]}
+axum = {version = "0.7", features = ["tokio", "http1", "macros", "multipart"]}
 tokio = { version = "1", features = ["full", "macros", "time"] }
 tokio-util = {version = "0.7", features = ["io"]}
 tower = "0.5"

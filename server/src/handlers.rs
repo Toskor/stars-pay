@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use axum::{
     body::Body,
-    extract::{Json, Path, Query, State},
+    extract::{Json, Multipart, Path, Query, State},
     response::{IntoResponse, Response},
 };
 use fastwebsockets::upgrade;
@@ -65,6 +65,69 @@ pub async fn make_test_donation(
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
         ),
+    }
+}
+
+pub async fn upload_image(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    let security_check = state
+        .with_record(MAIN_BOT_ID, |bot| {
+            if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
+                return Some(());
+            }
+            None
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(_)) => {
+            let mut image = Option::<Vec<u8>>::None;
+            let mut image_type = Option::<String>::None;
+
+            while let Ok(Some(field)) = multipart.next_field().await {
+                let Some(name) = field.name() else {
+                    continue;
+                };
+
+                if name == "image" {
+                    let Some(content_type) = field.content_type() else {
+                        continue;
+                    };
+                    if content_type.starts_with("image/") {
+                        image_type = Some(content_type.to_string());
+                        image = field.bytes().await.ok().map(|b| b.to_vec());
+                    }
+                }
+            }
+
+            if image.is_none() || image_type.is_none() {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "Invalid upload image params"})),
+                )
+            } else {
+                let url = state
+                    .upload_image_to_s3(image.unwrap(), &image_type.unwrap())
+                    .await
+                    .unwrap();
+                println!("upload image url: {}", url);
+                (StatusCode::OK, Json(serde_json::json!({"image_url": url})))
+            }
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure while uploading image"})),
+        ),
+        Err(e) => {
+            println!("upload image error: {:?}", e);
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
     }
 }
 
@@ -254,7 +317,6 @@ pub async fn fetch_user_bots(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    println!("start fetch_user_bots");
     let security_check = state
         .with_record(MAIN_BOT_ID, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {

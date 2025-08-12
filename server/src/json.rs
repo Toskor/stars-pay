@@ -255,7 +255,7 @@ pub struct DonationButton {
     pub name: String,
     pub description: String,
     pub amount: u32,
-    pub source_id: u32,
+    pub source_url: String,
     pub invoice_url: String,
 }
 

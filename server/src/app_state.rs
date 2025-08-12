@@ -752,6 +752,22 @@ impl AppState {
 
         Ok(())
     }
+
+    pub async fn upload_image_to_s3(
+        &self,
+        image: Vec<u8>,
+        file_type: &str,
+    ) -> Result<String> {
+        let uuid = uuid::Uuid::new_v4().to_string();
+        let extension = file_type.trim_start_matches("image/");
+        let s3_path = format!("assets/{uuid}.{extension}");
+
+        self.put_file_to_s3(image, file_type, &s3_path).await?;
+        
+        let s3_website = dotenv!("S3_WEBSITE");
+        let url = format!("{s3_website}/{s3_path}");
+        Ok(url)
+    }
 }
 
 pub fn get_bot_id_from_username(bot_username: &str) -> String {

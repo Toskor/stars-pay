@@ -71,7 +71,6 @@
     console.log("handlePay", bot);
     //request to generate special invoice url for paying debt
     //mb need to add special params like bot_id, user_id, amount, etc
-    
     const response = await getDebtInvoiceURL(app.initData, bot.id);
     if (response.success) {
       let invoice_url = response.data.invoice_url;
@@ -79,7 +78,9 @@
         if (status === "paid") {
           // set bot not blocked
           const storeValue = get(botsStore) as BotsStoreType;
-          const botToUpdate = storeValue.data?.bots?.find((b) => b.id === bot.id);
+          const botToUpdate = storeValue.data?.bots?.find(
+            (b) => b.id === bot.id
+          );
           if (botToUpdate) {
             botToUpdate.blocked = false;
             botToUpdate.suspended = false;
@@ -90,7 +91,7 @@
       });
     } else {
       //todo show error
-      console.log("handlePay error",  response.error);
+      console.log("handlePay error", response.error);
     }
   }
 

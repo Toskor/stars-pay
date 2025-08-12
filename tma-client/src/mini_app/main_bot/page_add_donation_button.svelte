@@ -11,14 +11,16 @@
     SectionFooter,
     SectionHeader,
     List,
+    FileInput,
+    Cell,
   } from "telegram-ui";
   import { type DonationButton, source_pool } from "../stream_bot/types";
   import {
-    addDonationButtonToBot,
+    addDonationButtonToBot as addDonationButtonToBotStore,
     botsStore,
     getDonationButtonsLen,
   } from "./store";
-  import { updateConfig } from "./queries";
+  import { updateConfig, uploadImage } from "./queries";
   import { get } from "svelte/store";
 
   let {
@@ -40,6 +42,10 @@
   let isAdding = $state(false);
   let errorMessage = $state<string | null>(null);
 
+  // Source selection state
+  let sourceType = $state<"preloaded" | "upload">("preloaded");
+  let image = $state<File | undefined>(undefined);
+
   onMount(() => {
     if (!app) {
       navigateTo("main");
@@ -55,7 +61,7 @@
     }
   });
 
-  const handleAddButton = () => {
+  const handleAddButton = async () => {
     if (!name.trim()) {
       errorMessage = "Please enter a name for the donation button";
       return;
@@ -79,21 +85,45 @@
       };
     }
 
+    let source_url = "";
+    if (sourceType === "upload") {
+      if (!image) {
+        errorMessage = "Please select an image file to upload";
+        isAdding = false;
+        return;
+      }
+      // upload image to server return url
+      let res = await uploadImage(app!.initData, image);
+      if (res.success) {
+        source_url = res.data.image_url;
+      } else {
+        console.error("Error uploading image:", res.error);
+        errorMessage = "Error uploading image. Please try again.";
+        isAdding = false;
+        return;
+      }
+    } else {
+      // use preloaded source from source_pool
+      source_url = source_pool[selectedSourceId];
+    }
+    image = undefined;
+
+    // update newButton and store with url
     const newButton: DonationButton = {
       id: getDonationButtonsLen(bot.id),
       name: name.trim(),
       description: description.trim(),
       amount: Number(amount),
-      source_id: selectedSourceId,
+      source_url: source_url,
       invoice_url: "",
     };
-
-    addDonationButtonToBot(bot.id, [newButton]);
+    addDonationButtonToBotStore(bot.id, [newButton]);
 
     let preview_data = get(botsStore).data?.bots.find(
       (b) => b.id === bot?.id
     )?.preview_data;
 
+    // update config request with newButton
     updateConfig(app!.initData, bot!.id, JSON.stringify(preview_data)).then(
       (res) => {
         if (res.success) {
@@ -114,10 +144,18 @@
     description = "";
     amount = "";
     selectedSourceId = 0;
+    sourceType = "preloaded";
     isAdding = false;
 
     // Navigate back
     navigateTo("manage_donation_buttons", bot);
+  };
+
+  const handleImageChange = (e: Event) => {
+    image = (e.target as HTMLInputElement).files?.[0];
+    if (image) {
+      sourceType = "upload";
+    }
   };
 </script>
 
@@ -148,28 +186,77 @@
 
   <Section>
     <SectionHeader>Select Source</SectionHeader>
-    <div class="image-selector">
-      {#each source_pool as source, index}
-        <div
-          class="image-option"
-          class:selected={selectedSourceId === index}
-          onclick={() => (selectedSourceId = index)}
-          role="button"
-          tabindex="0"
-          onkeydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              selectedSourceId = index;
-            }
-          }}
-        >
-          <Image src={source} size={48} />
-          <div
-            class="radio-circle"
-            class:selected={selectedSourceId === index}
-          ></div>
-        </div>
-      {/each}
+
+    <!-- Source type selector -->
+    <div class="source-type-selector">
+      <button
+        class="source-type-button"
+        class:active={sourceType === "preloaded"}
+        onclick={() => {
+          sourceType = "preloaded";
+          image = undefined;
+        }}
+      >
+        Preloaded sources
+      </button>
+      <button
+        class="source-type-button"
+        class:active={sourceType === "upload"}
+        onclick={() => {
+          sourceType = "upload";
+        }}
+      >
+        Upload from device
+      </button>
     </div>
+
+    <!-- Preloaded images selector -->
+    {#if sourceType === "preloaded"}
+      <div class="image-selector">
+        {#each source_pool as source, index}
+          <div
+            class="image-option"
+            class:selected={selectedSourceId === index}
+            onclick={() => (selectedSourceId = index)}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                selectedSourceId = index;
+              }
+            }}
+          >
+            <Image src={source} size={48} />
+            <div
+              class="radio-circle"
+              class:selected={selectedSourceId === index}
+            ></div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- File upload input -->
+    {#if sourceType === "upload"}
+      <div class="upload-section">
+        <FileInput
+          type="file"
+          accept="image/png, image/jpeg, image/gif, image/apng"
+          onchange={handleImageChange}
+        >
+          {#if image}
+            <Cell>
+              {#snippet subtitle()}
+                {image!.size} bytes
+              {/snippet}
+              {#snippet children()}
+                {image!.name}
+              {/snippet}
+            </Cell>
+          {/if}
+        </FileInput>
+      </div>
+    {/if}
   </Section>
 
   <div class="button-group">
@@ -193,16 +280,54 @@
       Cancel
     </Button>
   </div>
-
-  <SectionFooter centered={false}>
-    <Text>
-      Configure your donation button with a name, description, amount, and
-      select an image.
-    </Text>
-  </SectionFooter>
 </List>
 
 <style>
+  .source-type-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    background-color: var(--tgui--secondary_bg_color);
+    border-radius: 12px;
+    padding: 4px;
+    margin: 0px 5px;
+  }
+
+  .source-type-button {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--tgui--text_color);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .source-type-button.active {
+    background-color: var(--tgui--button_color);
+    color: var(--tgui--button_text_color);
+  }
+
+  .source-type-button:hover:not(.active) {
+    background-color: var(--tgui--hint_color);
+  }
+
+  .upload-section {
+    margin-top: 12px;
+  }
+
+  .selected-file-info {
+    margin-top: 12px;
+    padding: 12px;
+    background-color: var(--tgui--secondary_bg_color);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
   .form-group {
     display: flex;
     flex-direction: column;
@@ -220,7 +345,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
-    margin-top: 8px;
+    margin: 8px 5px 0px 5px;
   }
 
   .image-option {
@@ -230,6 +355,7 @@
     gap: 8px;
     cursor: pointer;
     padding: 8px;
+    margin-bottom: 5px;
     border-radius: 8px;
   }
 

@@ -31,10 +31,9 @@ class ApiClient {
       const response = await fetch(requestUrl, {
         ...options,
         headers: {
-          "Content-Type": "application/json;charset=utf-8",
+          ...options.headers,
           //todo remove
           "ngrok-skip-browser-warning": "true",
-          ...options.headers,
         },
       });
 
@@ -70,6 +69,7 @@ class ApiClient {
       method: "GET",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
     });
   }
@@ -82,6 +82,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ bot_token: botToken }),
     });
@@ -99,6 +100,7 @@ class ApiClient {
           method: "GET",
           headers: {
             "X-Telegram-InitData": initData,
+            "Content-Type": "application/json;charset=utf-8",
           },
         }
       );
@@ -132,6 +134,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ bot_id: botId, admin_id: adminId }),
     });
@@ -145,6 +148,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ bot_id: botId }),
     });
@@ -159,6 +163,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ bot_id: botId, new_token: newToken }),
     });
@@ -181,6 +186,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ bot_id: botId, admin_id: adminId }),
     });
@@ -194,6 +200,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ target_bot_id: bot_id }),
     });
@@ -208,6 +215,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ target_bot_id: bot_id, app_config: config }),
     });
@@ -221,6 +229,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ target_bot_id: bot_id }),
     });
@@ -234,6 +243,7 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({ target_bot_id: bot_id }),
     });
@@ -249,12 +259,28 @@ class ApiClient {
       method: "POST",
       headers: {
         "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
       },
       body: JSON.stringify({
         target_bot_id: bot_id,
         amount: amount,
         media_source: mediaSource,
       }),
+    });
+  }
+
+  async uploadImage(
+    initData: string,
+    image: File
+  ): Promise<ApiResponse<{ image_url: string }>> {
+    const formData = new FormData();
+    formData.append("image", image);
+    return this.request<{ image_url: string }>("/uploadImage", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+      },
+      body: formData,
     });
   }
 }
@@ -276,3 +302,4 @@ export const updateConfig = api.updateConfig.bind(api);
 export const refreshLayerToken = api.refreshLayerToken.bind(api);
 export const getDebtInvoiceURL = api.getDebtInvoiceURL.bind(api);
 export const makeTestDonation = api.makeTestDonation.bind(api);
+export const uploadImage = api.uploadImage.bind(api);
