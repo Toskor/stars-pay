@@ -1,3 +1,4 @@
+import type { GoalProps } from "../../goal/types";
 import type { PreviewData } from "../stream_bot/types";
 import type { MainPageProps, Bot, User } from "./types";
 
@@ -221,6 +222,21 @@ class ApiClient {
     });
   }
 
+  async updateGoalConfig(
+    initData: string,
+    bot_id: string,
+    config: GoalProps
+  ): Promise<ApiResponse<{ status: string }>> {
+    return this.request<{ status: string }>("/updateGoalConfig", {
+      method: "POST",
+      headers: {
+        "X-Telegram-InitData": initData,
+        "Content-Type": "application/json;charset=utf-8",
+      },
+      body: JSON.stringify({ target_bot_id: bot_id, goal_config: config }),
+    });
+  }
+
   async refreshLayerToken(
     initData: string,
     bot_id: string
@@ -303,3 +319,4 @@ export const refreshLayerToken = api.refreshLayerToken.bind(api);
 export const getDebtInvoiceURL = api.getDebtInvoiceURL.bind(api);
 export const makeTestDonation = api.makeTestDonation.bind(api);
 export const uploadImage = api.uploadImage.bind(api);
+export const updateGoalConfig = api.updateGoalConfig.bind(api);

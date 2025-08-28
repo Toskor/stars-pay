@@ -29,11 +29,12 @@
     "https://avatars.mds.yandex.net/i?id=3ef58cad5f77fcebe674582d17765372_l-4032453-images-thumbs&n=13";
 
   const testNames = ["Alex", "Maria", "John"];
-  function getRandomTestDonation() {
+  function getRandomTestDonation(): WSMessage {
     const randomName = testNames[Math.floor(Math.random() * testNames.length)];
     const randomStars = Math.floor(Math.random() * (1000 - 10 + 1)) + 10;
     return {
-      ok: true as const,
+      ok: true,
+      type: "donation",
       from: randomName,
       total_amount: randomStars,
       invoice_payload: test_image_url,

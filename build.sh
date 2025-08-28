@@ -17,6 +17,9 @@ TARGET="layer" bun run build
 echo "blocked_app"
 TARGET="blocked_app" bun run build
 
+echo "goal_app"
+TARGET="goal_app" bun run build
+
 echo "Build complete!"
 
 cd ..

@@ -25,6 +25,10 @@ if (target === "main_bot_mini_app") {
   input = {
     blocked_app: resolve(__dirname, "src/pages/blocked_app.html"),
   };
+} else if (target === "goal_app") {
+  input = {
+    goal_app: resolve(__dirname, "src/pages/goal_app.html"),
+  };
 }
 
 const fileGenerationConfig = {

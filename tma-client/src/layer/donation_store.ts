@@ -34,22 +34,26 @@ function createDonationStore() {
         if (!ws_msg.ok) {
           return state;
         }
-        
-        const isGif = ws_msg.invoice_payload.toLowerCase().endsWith(".gif");
-        const newItem: DonationItem = {
-          id: crypto.randomUUID(),
-          url: ws_msg.invoice_payload,
-          isGif,
-          timestamp: Date.now(),
-          from: ws_msg.from,
-          total_amount: ws_msg.total_amount,
-          invoice_payload: ws_msg.invoice_payload,
-          message: ws_msg.message,
-        };
-        return {
-          ...state,
-          queue: [...state.queue, newItem],
-        };
+
+        if (ws_msg.type === "donation") {
+          const isGif = ws_msg.invoice_payload.toLowerCase().endsWith(".gif");
+          const newItem: DonationItem = {
+            id: crypto.randomUUID(),
+            url: ws_msg.invoice_payload,
+            isGif,
+            timestamp: Date.now(),
+            from: ws_msg.from,
+            total_amount: ws_msg.total_amount,
+            invoice_payload: ws_msg.invoice_payload,
+            message: ws_msg.message,
+          };
+          return {
+            ...state,
+            queue: [...state.queue, newItem],
+          };
+        }
+
+        return state;
       });
     },
     removeFromQueue: (id: string) => {

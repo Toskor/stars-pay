@@ -1,3 +1,5 @@
+import type { GoalProps } from "../goal/types";
+
 export interface WSConfig {
   ws_url: string;
 }
@@ -5,6 +7,7 @@ export interface WSConfig {
 export type WSMessage =
   | {
       ok: true;
+      type: "donation";
       //username
       from: string;
       total_amount: number;
@@ -12,6 +15,7 @@ export type WSMessage =
       invoice_payload: string;
       message: string;
     }
+  | { ok: true; type: "goalProps"; props: GoalProps }
   | {
       ok: false;
       error: string;
@@ -30,7 +34,6 @@ export class WSClient {
   private lastPingTime = 0;
   //for sending ping message
   private pingTimeout: number | null = null;
-  //for
   private readonly PING_TIMEOUT = 8000;
 
   constructor(config: WSConfig) {

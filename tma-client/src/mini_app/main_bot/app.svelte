@@ -1,6 +1,6 @@
 <script lang="ts">
   import "telegram-ui/styles";
-  import { platform } from "telegram-ui";
+  import { Button, platform } from "telegram-ui";
   import type { Page, Bot } from "./types";
   import PageMain from "./page_main.svelte";
   import { botsStore, loadBotsData, revokeAllAvatarObjectUrls } from "./store";
@@ -14,6 +14,9 @@
   import PageAddDonationButton from "./page_add_donation_button.svelte";
   import PageAddAdmin from "./page_add_admin.svelte";
   import PagePreviewStreamBot from "./page_preview_stream_bot.svelte";
+
+  import { updateGoalConfig } from "./queries";
+  import { defaultProps } from "../../goal/types";
 
   //@ts-ignore
   let app = window.Telegram.WebApp;
@@ -94,6 +97,13 @@
     <PageAddAdmin {navigateTo} bot={selectedBot} />
   {/if}
 </div>
+
+goal test buttons
+<Button onclick={() => {
+  console.log("clicked");
+  updateGoalConfig(app!.initData, "star_donation", defaultProps);
+}}>Update config</Button>
+
 
 <style>
   :global(body) {
