@@ -8,12 +8,12 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use crate::{
     db::{DBBot, DataBase},
     main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
-    tg_api, CACHE_SIZE, DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK, HTML_MAIN_BOT_MINI_APP, HTML_MINI_APP,
-    MAX_STARS_DEBT,
+    tg_api, CACHE_SIZE, DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK, HTML_GOAL_APP, HTML_MAIN_BOT_MINI_APP,
+    HTML_MINI_APP, MAX_STARS_DEBT,
 };
 use crate::{
     json, s3_api, DAYS_SINCE_LAST_PAYMENT_FOR_NOTIFICATION, HTML_BLOCKED_APP, HTML_LAYER,
-    PROCENT_FOR_MAIN_BOT, ROOM_CAPACITY,
+    PROCENT_FOR_MAIN_BOT
 };
 
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
@@ -140,6 +140,23 @@ impl AppState {
         .await
         .unwrap();
 
+        //test goal
+        let goal_config = self
+            .get_goal_config("star_donation".to_string())
+            .await
+            .unwrap();
+        self.update_goal_source_s3(
+            "star_donation",
+            &ws_token,
+            &self
+                .generate_ws_url_with_token("star_donation", &ws_token)
+                .await
+                .unwrap(),
+            &goal_config,
+        )
+        .await
+        .unwrap();
+
         Ok(())
     }
 
@@ -175,6 +192,9 @@ impl AppState {
             donation_buttons: vec![],
             title: None,
         })?;
+
+        //todo default value for goal config
+        let goal_config = "{}".to_string();
 
         let admins = vec![owner, 487373];
 
@@ -225,7 +245,9 @@ impl AppState {
             false,
         );
 
-        self.db.insert_bot(bot, app_config).await?;
+        self.db
+            .insert_bot(bot, app_config, goal_config.to_string())
+            .await?;
 
         self.update_mini_app_source(bot_id.to_string(), false)
             .await?;
@@ -233,6 +255,10 @@ impl AppState {
         // Create layer HTML file in S3
         let ws_url = self.generate_ws_url_with_token(&bot_id, &ws_token).await?;
         self.update_layer_source_s3(bot_id.to_string(), &ws_token, &ws_url)
+            .await?;
+
+        // Create goal HTML file in S3
+        self.update_goal_source_s3(&bot_id, &ws_token, &ws_url, &goal_config)
             .await?;
 
         Ok((bot_id.to_string(), bot_info.username))
@@ -262,7 +288,9 @@ impl AppState {
             MAIN_BOT_ADMINS.to_vec(),
             false,
         );
-        self.db.insert_bot(bot, "".to_string()).await?;
+        self.db
+            .insert_bot(bot, "".to_string(), "".to_string())
+            .await?;
         Ok(())
     }
 
@@ -278,8 +306,12 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn get_bot_config(&self, bot_id: String) -> Result<String> {
-        self.db.get_bot_config(bot_id).await
+    pub async fn get_app_config(&self, bot_id: String) -> Result<String> {
+        self.db.get_app_config(bot_id).await
+    }
+
+    pub async fn get_goal_config(&self, bot_id: String) -> Result<String> {
+        self.db.get_goal_config(bot_id).await
     }
 
     pub async fn get_bot_token(&self, bot_id: String) -> Result<String> {
@@ -294,7 +326,7 @@ impl AppState {
         self.update_mini_app_source_with_config(&bot_id, &app_config)
             .await?;
 
-        self.db.update_bot_config(bot_id, app_config).await?;
+        self.db.update_app_config(bot_id, app_config).await?;
 
         Ok(())
     }
@@ -309,7 +341,7 @@ impl AppState {
         bot_id: &str,
         ws_token: &str,
     ) -> Result<String> {
-        let s3_path = self.generate_layer_s3_path(bot_id, ws_token).await?;
+        let s3_path = self.generate_s3_path("layers", bot_id, ws_token).await?;
         let s3_website = dotenv!("S3_WEBSITE");
         let layer_url = format!("{}/{}", s3_website, s3_path);
 
@@ -323,10 +355,49 @@ impl AppState {
         Ok(ws_url)
     }
 
-    /// Generate layer file path in S3 using bot_id and first 4 chars of ws_token
-    pub async fn generate_layer_s3_path(&self, bot_id: &str, ws_token: &str) -> Result<String> {
+    /// Generate file path in S3 using prefix, bot_id and first 4 chars of ws_token
+    pub async fn generate_s3_path(
+        &self,
+        prefix: &str,
+        bot_id: &str,
+        ws_token: &str,
+    ) -> Result<String> {
         let uuid = ws_token.chars().take(4).collect::<String>();
-        Ok(format!("layers/{}-{}.html", bot_id, uuid))
+        Ok(format!("{prefix}/{bot_id}-{uuid}.html"))
+    }
+
+    /// Create or update goal HTML file in S3
+    pub async fn update_goal_source_s3(
+        &self,
+        bot_id: &str,
+        ws_token: &str,
+        ws_url: &str,
+        goal_config: &str,
+    ) -> Result<()> {
+        let s3_path = self.generate_s3_path("goals", bot_id, ws_token).await?;
+
+        let html = HTML_GOAL_APP
+            .replace(r#"{"json_to_replace":""}"#, goal_config)
+            .replace("replace_with_ws_url", ws_url);
+
+        self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
+            .await?;
+
+        println!("goal url {}/{}", dotenv!("S3_WEBSITE"), s3_path);
+        Ok(())
+    }
+
+    /// Remove old goal file from S3 (used when refreshing tokens)
+    pub async fn remove_old_goal_file(&self, bot_id: &str, old_ws_token: &str) -> Result<()> {
+        let old_uuid = old_ws_token.chars().take(4).collect::<String>();
+        let old_s3_path = format!("goals/{}-{}.html", bot_id, old_uuid);
+
+        if self.file_exists_in_s3(&old_s3_path).await? {
+            println!("Removing old goal file from S3: {}", old_s3_path);
+            self.remove_file_from_s3(&old_s3_path).await?;
+        }
+
+        Ok(())
     }
 
     /// Create or update layer HTML file in S3
@@ -336,7 +407,7 @@ impl AppState {
         ws_token: &str,
         ws_url: &str,
     ) -> Result<()> {
-        let s3_path = self.generate_layer_s3_path(&bot_id, ws_token).await?;
+        let s3_path = self.generate_s3_path("layers", &bot_id, ws_token).await?;
 
         let html = HTML_LAYER.to_string().replace(
             r#"{"json_to_replace":""}"#,
@@ -345,6 +416,8 @@ impl AppState {
 
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
+
+        println!("layer url {}/{}", dotenv!("S3_WEBSITE"), s3_path);
 
         Ok(())
     }
@@ -370,7 +443,7 @@ impl AppState {
         } else if blocked {
             HTML_BLOCKED_APP.to_string()
         } else {
-            let config = self.db.get_bot_config(bot_id).await?;
+            let config = self.db.get_app_config(bot_id).await?;
             HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &config)
         };
 
@@ -382,7 +455,7 @@ impl AppState {
 
     //todo rename
     pub async fn update_mini_app_sources(&self) -> Result<()> {
-        let bots_config = self.db.get_bots_config().await?;
+        let bots_config = self.db.get_app_configs().await?;
 
         for (bot_id, app_config) in bots_config {
             if bot_id == MAIN_BOT_ID {
@@ -415,6 +488,29 @@ impl AppState {
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
 
+        Ok(())
+    }
+
+    pub async fn update_goal_config(
+        &self,
+        bot_id: String,
+        ws_token: &str,
+        goal_config: json::GoalProps,
+    ) -> Result<()> {
+        println!("start update_goal_config handler");
+        let goal_config_str = serde_json::to_string(&goal_config)?;
+        let ws_url = self.generate_ws_url_with_token(&bot_id, ws_token).await?;
+
+        self.update_goal_source_s3(&bot_id, ws_token, &ws_url, &goal_config_str)
+            .await?;
+
+        let event = json::WSEvent::Success(json::WSEventSuccess {
+            ok: true,
+            data: json::WSEventData::GoalProps { props: goal_config },
+        });
+        self.send_event_to_room_members(&bot_id, event).await?;
+
+        self.db.update_goal_config(bot_id, goal_config_str).await?;
         Ok(())
     }
 
@@ -536,6 +632,7 @@ impl AppState {
         // Remove layer files (try to remove current layer file)
         if let Ok(ws_token) = self.get_bot_ws_token(bot_id.to_string()).await {
             let _ = self.remove_old_layer_file(&bot_id, &ws_token).await;
+            let _ = self.remove_old_goal_file(&bot_id, &ws_token).await;
         }
 
         self.db.remove_bot(user_id, bot_id).await?;
@@ -550,65 +647,6 @@ impl AppState {
     ) -> Result<()> {
         self.db.change_bot_token(user_id, bot_id, new_token).await?;
         Ok(())
-    }
-
-    pub async fn get_or_create_room(
-        &self,
-        bot_id: &str,
-    ) -> Result<(broadcast::Sender<json::RoomMessage>, usize)> {
-        {
-            // Hashmap.get() cause RWLock.read()
-            let rooms = self.rooms.read().await;
-            if let Some(tx) = rooms.get(bot_id) {
-                let client_count = tx.receiver_count();
-
-                if client_count > ROOM_CAPACITY {
-                    return Err(anyhow!("maxout: room already has maximum clients"));
-                }
-
-                return Ok((tx.clone(), client_count));
-            }
-        }
-
-        let mut rooms = self.rooms.write().await;
-        let (tx, _rx) = broadcast::channel(32); // Same capacity as in gist
-        rooms.insert(bot_id.to_string(), tx.clone());
-
-        Ok((tx, 0))
-    }
-
-    pub async fn remove_client_from_room(&self, bot_id: &str, cid: usize) {
-        let mut should_remove_room = false;
-        let left_in_room = {
-            let rooms = self.rooms.read().await;
-            if let Some(tx) = rooms.get(bot_id) {
-                let count = tx.receiver_count();
-                if count <= 1 {
-                    should_remove_room = true;
-                }
-                count
-            } else {
-                0
-            }
-        };
-
-        if should_remove_room {
-            let mut rooms = self.rooms.write().await;
-            rooms.remove(bot_id);
-            println!("Removed empty room for bot_id: {}", bot_id);
-        } else {
-            println!(
-                "Client {} left room {}, {} clients remaining",
-                cid, bot_id, left_in_room
-            );
-        }
-    }
-
-    pub async fn send_donation_to_room_members(&self, room_id: String, donation: Vec<u8>) {
-        let rooms = self.rooms.read().await;
-        if let Some(tx) = rooms.get(&room_id) {
-            tx.send(json::RoomMessage::Text(donation)).unwrap();
-        }
     }
 
     pub async fn refresh_layer_token(&self, bot_id: String) -> Result<()> {
@@ -626,6 +664,9 @@ impl AppState {
 
         // Remove old layer file from S3
         self.remove_old_layer_file(&bot_id, &old_ws_token).await?;
+
+        // Remove old goal file from S3
+        self.remove_old_goal_file(&bot_id, &old_ws_token).await?;
 
         self.db
             .update_bot_layer_token(bot_id.to_string(), new_layer_token)
@@ -753,17 +794,13 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn upload_image_to_s3(
-        &self,
-        image: Vec<u8>,
-        file_type: &str,
-    ) -> Result<String> {
+    pub async fn upload_image_to_s3(&self, image: Vec<u8>, file_type: &str) -> Result<String> {
         let uuid = uuid::Uuid::new_v4().to_string();
         let extension = file_type.trim_start_matches("image/");
         let s3_path = format!("assets/{uuid}.{extension}");
 
         self.put_file_to_s3(image, file_type, &s3_path).await?;
-        
+
         let s3_website = dotenv!("S3_WEBSITE");
         let url = format!("{s3_website}/{s3_path}");
         Ok(url)

@@ -11,7 +11,6 @@ pub struct DBBot {
     pub secret_token: String,
     pub ws_token: String,
 
-    // pub app_config: String,
     pub owner: u64,
     // admins id vec in json format
     pub admins: Vec<u64>,
@@ -69,12 +68,23 @@ impl DataBase {
                 token               TEXT NOT NULL,
                 secret_token        TEXT NOT NULL,
                 ws_token            TEXT NOT NULL,
-                app_config          TEXT NOT NULL,
                 owner               INTEGER NOT NULL,
                 admins              TEXT NOT NULL,
                 last_payment_date   INTEGER,
                 star_debt           REAL NOT NULL DEFAULT 0,
                 blocked             BOOLEAN NOT NULL DEFAULT 0
+            )",
+                (),
+            )
+        })
+        .await?;
+
+        conn.call(move |conn| {
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS configs (
+                id                  TEXT PRIMARY KEY NOT NULL,
+                app_config          TEXT NOT NULL,
+                goal_config         TEXT NOT NULL
             )",
                 (),
             )
@@ -236,27 +246,42 @@ impl DataBase {
         Ok(bot)
     }
 
-    pub async fn insert_bot(&self, bot: DBBot, app_config: String) -> Result<()> {
+    pub async fn insert_bot(
+        &self,
+        bot: DBBot,
+        app_config: String,
+        goal_config: String,
+    ) -> Result<()> {
         let conn = &self.conn;
 
         let admins_json = serde_json::to_string(&bot.admins)?;
 
         conn.call(move |conn| {
-            conn.execute(
-                "INSERT INTO bots (id, token, secret_token, ws_token, app_config, owner, admins, last_payment_date, star_debt, blocked) VALUES (:id, :token, :secret_token, :ws_token, :app_config, :owner, :admins, :last_payment_date, :star_debt, :blocked)",
+            let tx = conn.transaction()?;
+            tx.execute(
+                "INSERT INTO bots (id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked) VALUES (:id, :token, :secret_token, :ws_token, :owner, :admins, :last_payment_date, :star_debt, :blocked)",
                 named_params! {
                     ":id": &bot.id,
                     ":token": &bot.token,
                     ":secret_token": &bot.secret_token,
                     ":ws_token": &bot.ws_token,
-                    ":app_config": &app_config,
                     ":owner": &bot.owner,
                     ":admins": &admins_json,
                     ":last_payment_date": &bot.last_payment_date,
                     ":star_debt": &bot.star_debt,
                     ":blocked": &bot.blocked,
                 },
-            )
+            )?;
+
+            tx.execute(
+                "INSERT INTO configs (id, app_config, goal_config) VALUES (:id, :app_config, :goal_config)",
+                named_params! {
+                    ":id": &bot.id,
+                    ":app_config": &app_config,
+                    ":goal_config": &goal_config,
+                },
+            )?;
+            tx.commit()
         })
         .await?;
 
@@ -289,14 +314,31 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_bot_config(&self, bot_id: String, app_config: String) -> Result<()> {
+    pub async fn update_app_config(&self, bot_id: String, app_config: String) -> Result<()> {
         let conn = &self.conn;
 
         conn.call(move |conn| {
             conn.execute(
-                "UPDATE bots SET app_config = :app_config WHERE id = :id",
+                "UPDATE configs SET app_config = :app_config WHERE id = :id",
                 named_params! {
                     ":app_config": &app_config,
+                    ":id": &bot_id,
+                },
+            )
+        })
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_goal_config(&self, bot_id: String, goal_config: String) -> Result<()> {
+        let conn = &self.conn;
+
+        conn.call(move |conn| {
+            conn.execute(
+                "UPDATE configs SET goal_config = :goal_config WHERE id = :id",
+                named_params! {
+                    ":goal_config": &goal_config,
                     ":id": &bot_id,
                 },
             )
@@ -322,11 +364,11 @@ impl DataBase {
         Ok(count > 0)
     }
 
-    pub async fn get_bots_config(&self) -> Result<Vec<(String, String)>> {
+    pub async fn get_app_configs(&self) -> Result<Vec<(String, String)>> {
         let conn = &self.conn;
         let bots_config = conn
             .call(move |conn| {
-                let mut stmt = conn.prepare_cached("SELECT id, app_config FROM bots")?;
+                let mut stmt = conn.prepare_cached("SELECT id, app_config FROM configs")?;
                 let bots_map = stmt.query_map([], |row| {
                     let id: String = row.get(0)?;
                     let app_config: String = row.get(1)?;
@@ -345,18 +387,55 @@ impl DataBase {
         Ok(bots_config)
     }
 
-    pub async fn get_bot_config(&self, bot_id: String) -> Result<String> {
+    pub async fn get_app_config(&self, bot_id: String) -> Result<String> {
         let conn = &self.conn;
         let app_config = conn
             .call(move |conn| {
                 conn.query_row(
-                    "SELECT app_config FROM bots WHERE id = :id",
+                    "SELECT app_config FROM configs WHERE id = :id",
                     named_params! { ":id": &bot_id },
                     |row| row.get(0),
                 )
             })
             .await?;
         Ok(app_config)
+    }
+
+    pub async fn get_goal_config(&self, bot_id: String) -> Result<String> {
+        let conn = &self.conn;
+        let goal_config = conn
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT goal_config FROM configs WHERE id = :id",
+                    named_params! { ":id": &bot_id },
+                    |row| row.get(0),
+                )
+            })
+            .await?;
+        Ok(goal_config)
+    }
+
+    pub async fn get_goal_configs(&self) -> Result<Vec<(String, String)>> {
+        let conn = &self.conn;
+        let bots_config = conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare_cached("SELECT id, goal_config FROM configs")?;
+                let bots_map = stmt.query_map([], |row| {
+                    let id: String = row.get(0)?;
+                    let goal_config: String = row.get(1)?;
+                    Ok((id, goal_config))
+                })?;
+                let mut bots_config: Vec<(String, String)> = vec![];
+
+                for bot in bots_map.into_iter() {
+                    let bot_config = bot?;
+                    bots_config.push(bot_config);
+                }
+                Ok::<Vec<(String, String)>, async_rusqlite::Error>(bots_config)
+            })
+            .await?;
+
+        Ok(bots_config)
     }
 
     pub async fn get_bot_token(&self, bot_id: String) -> Result<String> {
@@ -454,11 +533,16 @@ impl DataBase {
 
         // If the user is the owner, proceed with deletion
         conn.call(move |conn| {
-            conn.execute(
+            let tx = conn.transaction()?;
+            tx.execute(
                 "DELETE FROM bots WHERE id = :id",
                 named_params! { ":id": &bot_id },
             )?;
-            Ok::<(), async_rusqlite::Error>(())
+            tx.execute(
+                "DELETE FROM configs WHERE id = :id",
+                named_params! { ":id": &bot_id },
+            )?;
+            tx.commit()
         })
         .await?;
         Ok(())
@@ -692,21 +776,21 @@ mod tests {
             .await
             .expect("Failed to create database");
 
-        db.update_bot_config(
+        db.update_app_config(
             "second_test_1".to_string(),
             preview_default_config.to_string(),
         )
         .await
         .unwrap();
 
-        db.update_bot_config(
+        db.update_app_config(
             "star_donation".to_string(),
             preview_default_config.to_string(),
         )
         .await
         .unwrap();
 
-        db.update_bot_config(
+        db.update_app_config(
             "just_for_test75w67".to_string(),
             preview_default_config.to_string(),
         )

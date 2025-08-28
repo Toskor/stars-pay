@@ -259,15 +259,33 @@ pub struct DonationButton {
     pub invoice_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WSDonationEvent {
-    pub ok: bool,
-    ///@username
-    pub from: String,
-    //currency: always TgStars,
-    pub total_amount: u32,
-    pub invoice_payload: String,
-    pub message: String,
+#[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum WSEvent {
+    Success(WSEventSuccess),
+    Error { ok: bool, error: String },
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct WSEventSuccess {
+    pub ok: bool, // true
+    #[serde(flatten)]
+    pub data: WSEventData,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
+pub enum WSEventData {
+    Donation {
+        from: String,
+        total_amount: u32,
+        invoice_payload: String,
+        message: String,
+    },
+    GoalProps {
+        props: GoalProps,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -305,9 +323,320 @@ pub struct MakeTestDonationQueryParam {
     pub media_source: String,
 }
 
+// Goal types
+
+#[derive(Deserialize)]
+pub struct GoalEnabledQueryParam {
+    pub target_bot_id: String,
+    pub enabled: bool,
+}
+
+#[derive(Deserialize)]
+pub struct GoalPropsQueryParam {
+    pub goal_config: GoalProps,
+    pub target_bot_id: String,
+}
+
+// export const defaultProps: GoalProps = {
+//     url: 'https://tg-stars.s3-website.nl-ams.scw.cloud/goal/some-uuid',
+//     // 0 general settings
+//     title: "Donation Goal Title",
+//     maxLimit: 444,
+//     progress: 106,
+  
+//     // 1 elements settings
+//     titlePosition: "inside",
+  
+//     progressPosition: "inside",
+//     progressType: "cur_stars_w_percent",
+  
+//     displayLimits: false,
+//     minLimit: 0,
+  
+//     displayBackground: false,
+  
+//     isVertical: false,
+  
+//     // 2 progress bar design
+//     barHeight: 29,
+//     roundingRadius: 4,
+//     barStrokeThickness: 0.4,
+//     strokeColor: "rgba(255,0,0,0.91)",
+  
+//     // Background bar styling
+//     bgBarColor: {
+//       colorType: "solid",
+//       color: "#424242",
+//       },
+  
+//     // Progress bar styling
+//     progressBarColor: {
+//       colorType: "gradient",
+//       color: "linear-gradient(0deg, #f57507,rgb(255, 248, 235))",
+//       },
+  
+//     // 3 font settings
+//     titleFontSettings: {
+//       // 1 font
+//       fontFamily: "Rubik",
+//       color: "#f1f1f1",
+//       style: [TextStyle.BOLD],
+//       transformation: "uppercase",
+//       horizontalAlignment: "center",
+  
+//       // 2 text
+//       fontSize: 2.0,
+//       lineHeight: 1,
+//       letterSpacing: 0,
+//       wordSpacing: 0,
+  
+//       // 3 shadow
+//       shadowColor: "rgba(0, 0, 0, 0.24)",
+//       shadowOffsetX: 0.3,
+//       shadowOffsetY: 0.3,
+//       shadowBlur: 0.5,
+//     },
+//   };
+
+#[derive(Deserialize, Serialize)]
+pub struct GoalProps {
+    pub url: String,
+
+    pub title: String,
+    #[serde(rename = "maxLimit")]
+    pub max_limit: u32,
+    pub progress: f32,
+
+    #[serde(rename = "titlePosition")]
+    pub title_position: ElementPosition,
+    #[serde(rename = "progressPosition")]
+    pub progress_position: ElementPosition,
+    #[serde(rename = "progressType")]
+    pub progress_type: ProgressType,
+
+    #[serde(rename = "displayLimits")]
+    pub display_limits: bool,
+    #[serde(rename = "minLimit")]
+    pub min_limit: u32,
+    #[serde(rename = "displayBackground")]
+    pub display_background: bool,
+    #[serde(rename = "isVertical")]
+    pub is_vertical: bool,
+
+    #[serde(rename = "barHeight")]
+    pub bar_height: f32,
+    #[serde(rename = "roundingRadius")]
+    pub rounding_radius: f32,
+    #[serde(rename = "barStrokeThickness")]
+    pub bar_stroke_thickness: f32,
+    #[serde(rename = "strokeColor")]
+    pub stroke_color: String,
+
+    #[serde(rename = "bgBarColor")]
+    pub bg_bar_color: ColorSettings,
+    #[serde(rename = "progressBarColor")]
+    pub progress_bar_color: ColorSettings,
+
+    #[serde(rename = "titleFontSettings")]
+    pub title_font_settings: FontSettings,
+    #[serde(rename = "progressBarFontSettings")]
+    pub progress_bar_font_settings: FontSettings,
+    #[serde(rename = "limitsFontSettings")]
+    pub limits_font_settings: FontSettings,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum ElementPosition {
+    #[serde(rename = "top")]
+    Top,
+    #[serde(rename = "inside")]
+    Inside,
+    #[serde(rename = "below")]
+    Below,
+    #[serde(rename = "invisible")]
+    Invisible,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum ProgressType {
+    #[serde(rename = "percent")]
+    Percent,
+    #[serde(rename = "cur_stars")]
+    CurStars,
+    #[serde(rename = "cur_stars_w_percent")]
+    CurStarsWPercent,
+    #[serde(rename = "cur_stars/target_stars")]
+    CurStarsDivTargetStars,
+    #[serde(rename = "cur_stars/target_stars_w_percent")]
+    CurStarsDivTargetStarsWPercent,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ColorSettings {
+    #[serde(rename = "colorType")]
+    pub color_type: ColorType,
+    pub color: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum ColorType {
+    #[serde(rename = "solid")]
+    Solid,
+    #[serde(rename = "gradient")]
+    Gradient,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct FontSettings {
+    // font
+    #[serde(rename = "fontFamily")]
+    pub font_family: String,
+    pub color: String,
+    pub style: Vec<TextStyle>,
+    pub transformation: Option<TextTransformation>,
+    #[serde(rename = "horizontalAlignment")]
+    pub horizontal_alignment: HorizontalAlignment,
+    // text
+    #[serde(rename = "fontSize")]
+    pub font_size: f32,
+    #[serde(rename = "lineHeight")]
+    pub line_height: f32,
+    #[serde(rename = "letterSpacing")]
+    pub letter_spacing: f32,
+    #[serde(rename = "wordSpacing")]
+    pub word_spacing: f32,
+    // shadow
+    #[serde(rename = "shadowColor")]
+    pub shadow_color: Option<String>,
+    #[serde(rename = "shadowOffsetX")]
+    pub shadow_offset_x: Option<f32>,
+    #[serde(rename = "shadowOffsetY")]
+    pub shadow_offset_y: Option<f32>,
+    #[serde(rename = "shadowBlur")]
+    pub shadow_blur: Option<f32>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum TextStyle {
+    #[serde(rename = "bold")]
+    Bold,
+    #[serde(rename = "italic")]
+    Italic,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum TextTransformation {
+    #[serde(rename = "uppercase")]
+    Uppercase,
+    #[serde(rename = "lowercase")]
+    Lowercase,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum HorizontalAlignment {
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "center")]
+    Center,
+    #[serde(rename = "right")]
+    Right,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_ws_event() {
+        let event = serde_json::to_string(&WSEvent::Success(WSEventSuccess {
+            ok: true,
+            data: WSEventData::GoalProps {
+                props: GoalProps {
+                    url: "https://example.com".to_string(),
+                    title: "Test Goal".to_string(),
+                    max_limit: 100,
+                    progress: 50.0,
+                    title_position: ElementPosition::Top,
+                    progress_position: ElementPosition::Top,
+                    progress_type: ProgressType::Percent,
+                    display_limits: false,
+                    min_limit: 0,
+                    display_background: false,
+                    is_vertical: false,
+                    bar_height: 15.0,
+                    rounding_radius: 4.0,
+                    bar_stroke_thickness: 0.4,
+                    stroke_color: "rgba(255,0,0,0.91)".to_string(),
+                    bg_bar_color: ColorSettings {
+                        color_type: ColorType::Solid,
+                        color: "#424242".to_string(),
+                    },
+                    progress_bar_color: ColorSettings {
+                        color_type: ColorType::Solid,
+                        color: "rgb(255, 215, 0)".to_string(),
+                    },
+                    title_font_settings: FontSettings {
+                        font_family: "Rubik".to_string(),
+                        color: "#f1f1f1".to_string(),
+                        style: vec![TextStyle::Bold],
+                        horizontal_alignment: HorizontalAlignment::Center,
+                        font_size: 2.75,
+                        line_height: 1.0,
+                        letter_spacing: 0.0,
+                        word_spacing: 0.0,
+                        transformation: None,
+                        shadow_color: None,
+                        shadow_offset_x: None,
+                        shadow_offset_y: None,
+                        shadow_blur: None,
+                    },
+                    limits_font_settings: FontSettings {
+                        font_family: "Rubik".to_string(),
+                        color: "#f1f1f1".to_string(),
+                        style: vec![TextStyle::Bold],
+                        horizontal_alignment: HorizontalAlignment::Center,
+                        font_size: 2.75,
+                        line_height: 1.0,
+                        letter_spacing: 0.0,
+                        word_spacing: 0.0,
+                        transformation: None,
+                        shadow_color: None,
+                        shadow_offset_x: None,
+                        shadow_offset_y: None,
+                        shadow_blur: None,
+                    },
+                    progress_bar_font_settings: FontSettings {
+                        font_family: "Rubik".to_string(),
+                        color: "#f1f1f1".to_string(),
+                        style: vec![TextStyle::Bold],
+                        horizontal_alignment: HorizontalAlignment::Center,
+                        font_size: 2.75,
+                        line_height: 1.0,
+                        letter_spacing: 0.0,
+                        word_spacing: 0.0,
+                        transformation: None,
+                        shadow_color: None,
+                        shadow_offset_x: None,
+                        shadow_offset_y: None,
+                        shadow_blur: None,
+                    },
+                },
+            },
+        })).unwrap();
+
+        println!("event: {}", event);
+    }
+
+    #[test]
+    fn test_goal_props() {
+        let props = ColorSettings {
+            color_type: ColorType::Gradient,
+            color: "linear-gradient(0deg, #f57507,rgb(255, 248, 235))".to_string(),
+        };
+        let props_str = serde_json::to_string(&props).unwrap();
+        println!("{}", props_str);
+    }
+
     #[test]
     fn parse_pre_checkout() {
         let data = r#"{"pre_checkout_query":{"currency":"XTR","from":{"first_name":"Григорий","id":348135868,"is_bot":false,"language_code":"ru","last_name":"Борисов","username":"Torsor"},"id":"1495232168384784946","invoice_payload":"12345","total_amount":1},"update_id":13134160}"#;

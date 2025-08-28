@@ -26,6 +26,7 @@ const HTML_MAIN_BOT_MINI_APP: &str =
     include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
 const HTML_LAYER: &str = include_str!("../../tma-client/dist/src/pages/layer.html");
 const HTML_BLOCKED_APP: &str = include_str!("../../tma-client/dist/src/pages/blocked_app.html");
+const HTML_GOAL_APP: &str = include_str!("../../tma-client/dist/src/pages/goal_app.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
@@ -55,9 +56,12 @@ async fn main() {
             get(handlers::avatar_url_handler),
         )
         .route("/:bot_id/config", post(handlers::config_handler))
-        //only for owner and admins
         .route("/:bot_id/updateConfig", post(handlers::update_config))
-        //only for owner and admins
+        // goal routes
+        .route(
+            "/:bot_id/updateGoalConfig",
+            post(handlers::update_goal_config),
+        )
         .route("/:bot_id/ws_token", get(handlers::get_bot_ws_token))
         //main bot routes
         .route(

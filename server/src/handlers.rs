@@ -40,22 +40,26 @@ pub async fn make_test_donation(
 
     match security_check {
         Ok(Some(_)) => {
-            let ws_donation_event = json::WSDonationEvent {
+            let ws_donation_event = json::WSEvent::Success(json::WSEventSuccess {
                 ok: true,
-                from: "Test User".to_string(),
-                total_amount: payload.amount,
-                invoice_payload: payload.media_source.clone(),
-                message: "Its just test donation".to_string(),
-            };
+                data: json::WSEventData::Donation {
+                    from: "Test User".to_string(),
+                    total_amount: payload.amount,
+                    invoice_payload: payload.media_source.clone(),
+                    message: "Its just test donation".to_string(),
+                },
+            });
 
-            state
-                .send_donation_to_room_members(
-                    payload.target_bot_id.clone(),
-                    serde_json::to_vec(&ws_donation_event).unwrap(),
-                )
-                .await;
-
-            (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
+            match state
+                .send_event_to_room_members(&payload.target_bot_id, ws_donation_event)
+                .await
+            {
+                Ok(_) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
@@ -150,13 +154,63 @@ pub async fn config_handler(
 
     match security_check {
         Ok(Some(_)) => {
-            let config = state.get_bot_config(payload.target_bot_id).await.unwrap();
+            let config = state.get_app_config(payload.target_bot_id).await.unwrap();
             let json_config: Value = serde_json::from_str(&config).unwrap();
             (StatusCode::OK, Json(json_config))
         }
         Ok(None) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "security check failure while getting config"})),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+pub async fn update_goal_config(
+    headers: HeaderMap,
+    Path(bot_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<json::GoalPropsQueryParam>,
+) -> impl IntoResponse {
+    println!("start update_goal_config");
+    let security_check = state
+        .with_record(&bot_id, |bot| {
+            if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
+                if user.id == bot.owner || bot.admins.contains(&user.id) {
+                    return Some(());
+                }
+            }
+            None
+        })
+        .await;
+
+    match security_check {
+        Ok(Some(_)) => {
+            let Ok(ws_token) = state.get_bot_ws_token(bot_id).await else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(
+                        serde_json::json!({"error": "security check failure while getting bot ws token"}),
+                    ),
+                );
+            };
+            match state
+                .update_goal_config(payload.target_bot_id, &ws_token, payload.goal_config)
+                .await
+            {
+                Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
+            }
+        }
+        Ok(None) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "security check failure while getting goal config"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -1192,28 +1246,28 @@ pub async fn parse_update(
                 // example {"ok":true,"result":true}
                 // println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
 
-                let ws_donation_event = json::WSDonationEvent {
+                let ws_donation_event = json::WSEvent::Success(json::WSEventSuccess {
                     ok: true,
-                    from: pre_checkout_query.from.username.clone(),
-                    total_amount: pre_checkout_query.total_amount,
-                    invoice_payload: pre_checkout_query.invoice_payload.clone(),
-                    message: "some message".to_string(),
-                };
+                    data: json::WSEventData::Donation {
+                        from: pre_checkout_query.from.username.clone(),
+                        total_amount: pre_checkout_query.total_amount,
+                        invoice_payload: pre_checkout_query.invoice_payload.clone(),
+                        message: "some message".to_string(),
+                    },
+                });
 
                 let state_c = state.clone();
                 let bot_id_c = bot_id.clone();
                 let stars = pre_checkout_query.total_amount;
 
-                let (_res_send, res_increase) = tokio::join!(
-                    state_c.send_donation_to_room_members(
-                        bot_id_c.clone(),
-                        serde_json::to_vec(&ws_donation_event).unwrap(),
-                    ),
+                let (res_send, res_increase) = tokio::join!(
+                    state_c.send_event_to_room_members(&bot_id_c, ws_donation_event,),
                     //todo can throw db error
-                    state_c.increase_stars_debt_for(bot_id_c, stars)
+                    state_c.increase_stars_debt_for(bot_id_c.clone(), stars)
                 );
 
                 res_increase?;
+                res_send?;
             }
         }
         json::UpdateData::Message(message) => {
