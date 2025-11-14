@@ -4,9 +4,8 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::Region;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
-use dotenv_codegen::dotenv;
 
-use crate::app_state::AppState;
+use crate::{app_state::AppState, config::Config};
 
 impl AppState {
     pub async fn put_file_to_s3(
@@ -15,10 +14,9 @@ impl AppState {
         content_type: &str,
         s3_path: &str,
     ) -> Result<()> {
-        let bucket_name = dotenv!("S3_BUCKET_NAME");
         self.s3_client
             .put_object()
-            .bucket(bucket_name)
+            .bucket(&self.config.s3_bucket_name)
             .key(s3_path)
             .body(ByteStream::from(file))
             .content_type(content_type)
@@ -28,12 +26,10 @@ impl AppState {
     }
 
     pub async fn file_exists_in_s3(&self, s3_path: &str) -> Result<bool> {
-        let bucket_name = dotenv!("S3_BUCKET_NAME");
-
         match self
             .s3_client
             .head_object()
-            .bucket(bucket_name)
+            .bucket(&self.config.s3_bucket_name)
             .key(s3_path)
             .send()
             .await
@@ -55,11 +51,10 @@ impl AppState {
     }
 
     pub async fn get_file_from_s3(&self, s3_path: &str) -> Result<Vec<u8>> {
-        let bucket_name = dotenv!("S3_BUCKET_NAME");
         let file = self
             .s3_client
             .get_object()
-            .bucket(bucket_name)
+            .bucket(&self.config.s3_bucket_name)
             .key(s3_path)
             .send()
             .await?;
@@ -69,10 +64,9 @@ impl AppState {
     }
 
     pub async fn remove_file_from_s3(&self, s3_path: &str) -> Result<()> {
-        let bucket_name = dotenv!("S3_BUCKET_NAME");
         self.s3_client
             .delete_object()
-            .bucket(bucket_name)
+            .bucket(&self.config.s3_bucket_name)
             .key(s3_path)
             .send()
             .await?;
@@ -82,13 +76,11 @@ impl AppState {
     /// Remove all files with the specified prefix (folder) from S3.
     /// This is equivalent to `s3cmd rm --recursive s3://bucket/prefix/`
     pub async fn remove_folder_from_s3(&self, s3_prefix: &str) -> Result<()> {
-        let bucket_name = dotenv!("S3_BUCKET_NAME");
-
         // List all objects with the specified prefix
         let list_response = self
             .s3_client
             .list_objects_v2()
-            .bucket(bucket_name)
+            .bucket(&self.config.s3_bucket_name)
             .prefix(s3_prefix)
             .send()
             .await?;
@@ -120,7 +112,7 @@ impl AppState {
 
             self.s3_client
                 .delete_objects()
-                .bucket(bucket_name)
+                .bucket(&self.config.s3_bucket_name)
                 .delete(delete_request)
                 .send()
                 .await?;
@@ -130,21 +122,21 @@ impl AppState {
     }
 }
 
-pub async fn s3_client() -> Client {
-    let access_key = dotenv!("S3_ACCESS_KEY");
-    let secret_key = dotenv!("S3_SECRET_KEY");
-    let region_name = dotenv!("S3_REGION");
-    let endpoint_url = dotenv!("S3_ENDPOINT_URL");
+pub async fn s3_client(config: &Config) -> Client {
+    let access_key = config.s3_access_key.clone();
+    let secret_key = config.s3_secret_key.clone();
+    let region_name = config.s3_region.clone();
+    let endpoint_url = config.s3_endpoint_url.clone();
 
     let credentials =
-        aws_sdk_s3::config::Credentials::new(access_key, secret_key, None, None, "scaleway-s3");
+        aws_sdk_s3::config::Credentials::new(&access_key, &secret_key, None, None, "scaleway-s3");
 
-    let config = aws_config::defaults(BehaviorVersion::latest())
+    let aws_config = aws_config::defaults(BehaviorVersion::latest())
         .region(Region::new(region_name))
         .credentials_provider(credentials)
-        .endpoint_url(endpoint_url)
+        .endpoint_url(&endpoint_url)
         .load()
         .await;
 
-    Client::new(&config)
+    Client::new(&aws_config)
 }

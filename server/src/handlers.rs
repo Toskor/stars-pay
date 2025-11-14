@@ -16,11 +16,10 @@ use tokio_util::io::ReaderStream;
 
 use crate::{
     app_state::get_bot_id_from_username,
-    http, json,
-    main_bot::{self, MAIN_BOT_ID},
+    http, json, main_bot,
     tg_api::{self, bot_numeric_id_from_token},
     ws_server::handle_client,
-    AppState, MAX_STARS_DEBT,
+    AppState,
 };
 use crate::{app_state::ControlledBots, db::DBBot};
 
@@ -30,7 +29,7 @@ pub async fn make_test_donation(
     Json(payload): Json<json::MakeTestDonationQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(());
             }
@@ -78,7 +77,7 @@ pub async fn upload_image(
     mut multipart: Multipart,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(());
             }
@@ -372,7 +371,7 @@ pub async fn fetch_user_bots(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(user);
             }
@@ -384,7 +383,13 @@ pub async fn fetch_user_bots(
         Ok(Some(web_app_user)) => {
             //todo bad unwrap
             let controlled_bots = state.get_controlled_bots(web_app_user.id).await.unwrap();
-            match convert_controlled_bots_to_json_value(controlled_bots, web_app_user).await {
+            match convert_controlled_bots_to_json_value(
+                controlled_bots,
+                web_app_user,
+                state.config.max_stars_debt,
+            )
+            .await
+            {
                 Ok(json_value) => (StatusCode::OK, Json(json_value)),
                 Err(e) => (
                     StatusCode::BAD_REQUEST,
@@ -406,6 +411,7 @@ pub async fn fetch_user_bots(
 async fn convert_controlled_bots_to_json_value(
     controlled_bots: ControlledBots,
     web_app_user: json::WebAppUser, //user that opened mini app
+    max_stars_debt: f64,
 ) -> Result<Value> {
     //todo remove time
     use std::time::Instant;
@@ -414,10 +420,20 @@ async fn convert_controlled_bots_to_json_value(
     let mut tasks: Vec<JoinHandle<Option<json::TMABotData>>> = Vec::new();
 
     // Process owner bots
-    process_owner_bots(&controlled_bots.owner_bots, &web_app_user, &mut tasks);
+    process_owner_bots(
+        &controlled_bots.owner_bots,
+        &web_app_user,
+        &mut tasks,
+        max_stars_debt,
+    );
 
     // Process admin bots
-    process_admin_bots(&controlled_bots.admin_bots, &web_app_user, &mut tasks);
+    process_admin_bots(
+        &controlled_bots.admin_bots,
+        &web_app_user,
+        &mut tasks,
+        max_stars_debt,
+    );
 
     let tasks_start = Instant::now();
 
@@ -448,6 +464,7 @@ fn process_owner_bots(
     owner_bots: &Vec<DBBot>,
     web_app_user: &json::WebAppUser,
     tasks: &mut Vec<tokio::task::JoinHandle<Option<json::TMABotData>>>,
+    max_stars_debt: f64,
 ) {
     use tokio::task::{self, JoinHandle};
 
@@ -488,7 +505,7 @@ fn process_owner_bots(
                 }
             };
 
-            let suspended = if bot.star_debt > MAX_STARS_DEBT {
+            let suspended = if bot.star_debt > max_stars_debt {
                 Some(true)
             } else {
                 None
@@ -521,6 +538,7 @@ fn process_admin_bots(
     admin_bots: &Vec<DBBot>,
     web_app_user: &json::WebAppUser,
     tasks: &mut Vec<tokio::task::JoinHandle<Option<json::TMABotData>>>,
+    max_stars_debt: f64,
 ) {
     use tokio::task::{self, JoinHandle};
 
@@ -587,7 +605,7 @@ fn process_admin_bots(
                 }
             };
 
-            let suspended = if bot.star_debt > MAX_STARS_DEBT {
+            let suspended = if bot.star_debt > max_stars_debt {
                 Some(true)
             } else {
                 None
@@ -679,7 +697,7 @@ pub async fn add_bot(
     Json(payload): Json<json::AddBotQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(user);
             }
@@ -737,7 +755,7 @@ pub async fn add_bot_admin(
     Json(payload): Json<json::AddBotAdminQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(user.id);
             }
@@ -778,7 +796,7 @@ pub async fn remove_bot_admin(
     Json(payload): Json<json::RemoveBotAdminQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(user.id);
             }
@@ -929,7 +947,7 @@ pub async fn remove_bot(
     Json(payload): Json<json::RemoveBotQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(user.id);
             }
@@ -968,7 +986,7 @@ pub async fn change_bot_token(
     Json(payload): Json<json::ChangeBotTokenQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 return Some(user.id);
             }
@@ -1009,7 +1027,7 @@ pub async fn refresh_layer_token(
     Json(payload): Json<json::RefreshLayerTokenQueryParams>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(user) = check_hash_in_headers(&headers, &bot.token) {
                 if user.id == bot.owner || bot.admins.contains(&user.id) {
                     return Some(());
@@ -1056,7 +1074,7 @@ pub async fn get_debt_invoice_url(
     Json(payload): Json<json::GetDebtInvoiceURLQueryParam>,
 ) -> impl IntoResponse {
     let security_check = state
-        .with_record(MAIN_BOT_ID, |bot| {
+        .with_record(&state.config.main_bot_id, |bot| {
             if let Some(_user) = check_hash_in_headers(&headers, &bot.token) {
                 Some(())
             } else {
@@ -1204,7 +1222,7 @@ pub async fn webhook_handler(
         }
 
         //todo redo
-        if bot_id == MAIN_BOT_ID {
+        if bot_id == state.config.main_bot_id {
             println!("Main bot webhook");
             match main_bot::parse_update(&payload, &token, &state).await {
                 Ok(json) => return (StatusCode::OK, Json(json)),

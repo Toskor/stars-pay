@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use aws_sdk_s3::Client;
 use lru::LruCache;
@@ -6,14 +6,10 @@ use std::collections::HashMap;
 use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::{
+    config::Config,
     db::{DBBot, DataBase},
-    main_bot::{MAIN_BOT_ADMINS, MAIN_BOT_ID, MAIN_BOT_OWNER, MAIN_BOT_TOKEN},
-    tg_api, CACHE_SIZE, DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK, HTML_GOAL_APP, HTML_MAIN_BOT_MINI_APP,
-    HTML_MINI_APP, MAX_STARS_DEBT,
-};
-use crate::{
-    json, s3_api, DAYS_SINCE_LAST_PAYMENT_FOR_NOTIFICATION, HTML_BLOCKED_APP, HTML_LAYER,
-    PROCENT_FOR_MAIN_BOT
+    json, s3_api, tg_api, HTML_BLOCKED_APP, HTML_GOAL_APP, HTML_LAYER, HTML_MAIN_BOT_MINI_APP,
+    HTML_MINI_APP,
 };
 
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
@@ -57,25 +53,26 @@ pub struct AppState {
     pub db: DataBase,
     pub rooms: RwLock<Rooms>,
     pub s3_client: Client,
+    pub config: Config,
 }
 
 impl AppState {
-    pub async fn new() -> Self {
-        //todo move db path to env?
-        let db = DataBase::new_sql_lite("db/bots_data_base.sqlite")
+    pub async fn new(config: Config) -> Self {
+        let db = DataBase::new_sql_lite(&config.db_path)
             .await
             .expect("Failed to create database");
 
-        let cache = Mutex::new(LruCache::new(CACHE_SIZE));
+        let cache = Mutex::new(LruCache::new(config.cache_size));
         let rooms = RwLock::new(HashMap::new());
 
-        let s3_client = s3_api::s3_client().await;
+        let s3_client = s3_api::s3_client(&config).await;
 
         Self {
             cache,
             db,
             rooms,
             s3_client,
+            config: config,
         }
     }
 
@@ -114,7 +111,7 @@ impl AppState {
         //     Err(e) => println!("Error: {}", e),
         // }
 
-        self.update_mini_app_source(MAIN_BOT_ID.to_string(), false)
+        self.update_mini_app_source(self.config.main_bot_id.clone(), false)
             .await
             .unwrap();
 
@@ -178,7 +175,7 @@ impl AppState {
 
         let bot_id = get_bot_id_from_username(&bot_info.username);
 
-        if bot_id == MAIN_BOT_ID {
+        if bot_id == self.config.main_bot_id {
             return Err(anyhow::anyhow!("Cant add main bot"));
         }
 
@@ -186,7 +183,7 @@ impl AppState {
             return Err(anyhow::anyhow!("Bot already exists"));
         }
 
-        let api_url = format!("{}{}/", dotenv!("DOMAIN"), bot_id);
+        let api_url = format!("{}{}/", self.config.domain, bot_id);
 
         let app_config = serde_json::to_string(&json::TMAAppConfig {
             donation_buttons: vec![],
@@ -198,7 +195,7 @@ impl AppState {
 
         let admins = vec![owner, 487373];
 
-        let button_text = if bot_id == MAIN_BOT_ID {
+        let button_text = if bot_id == self.config.main_bot_id {
             "App"
         } else {
             "Donate"
@@ -265,13 +262,17 @@ impl AppState {
     }
 
     async fn add_mainbot(&self) -> Result<()> {
-        if self.db.contains_bot(MAIN_BOT_ID.to_string()).await? {
+        if self
+            .db
+            .contains_bot(self.config.main_bot_id.clone())
+            .await?
+        {
             return Err(anyhow::anyhow!(
                 "Main bot StarDonationService already exists"
             ));
         }
-        // let api_url = format!("{}{}/", dotenv!("DOMAIN"), MAIN_BOT_ID);
-        // let tg_api_url = format!("https://api.telegram.org/bot{}/", MAIN_BOT_TOKEN);
+        // let api_url = format!("{}{}/", self.config.domain, self.config.main_bot_id);
+        // let tg_api_url = format!("https://api.telegram.org/bot{}/", self.config.main_bot_token);
 
         // let webhook_url = format!("{api_url}webhook");
         let secret_token = tg_api::generate_secret_token();
@@ -280,12 +281,12 @@ impl AppState {
         let ws_token = tg_api::generate_layer_token();
 
         let bot: DBBot = DBBot::new(
-            MAIN_BOT_ID.to_string(),
-            MAIN_BOT_TOKEN.to_string(),
+            self.config.main_bot_id.clone(),
+            self.config.main_bot_token.clone(),
             secret_token,
             ws_token,
-            MAIN_BOT_OWNER,
-            MAIN_BOT_ADMINS.to_vec(),
+            self.config.main_bot_owner,
+            self.config.main_bot_admins.clone(),
             false,
         );
         self.db
@@ -342,15 +343,13 @@ impl AppState {
         ws_token: &str,
     ) -> Result<String> {
         let s3_path = self.generate_s3_path("layers", bot_id, ws_token).await?;
-        let s3_website = dotenv!("S3_WEBSITE");
-        let layer_url = format!("{}/{}", s3_website, s3_path);
+        let layer_url = format!("{}/{}", self.config.s3_website, s3_path);
 
         Ok(layer_url)
     }
 
     pub async fn generate_ws_url_with_token(&self, bot_id: &str, ws_token: &str) -> Result<String> {
-        let domain = dotenv!("WS_DOMAIN");
-        let ws_url = format!("{domain}ws/{bot_id}?ws_token={ws_token}");
+        let ws_url = format!("{}ws/{bot_id}?ws_token={ws_token}", self.config.ws_domain);
 
         Ok(ws_url)
     }
@@ -383,7 +382,7 @@ impl AppState {
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
 
-        println!("goal url {}/{}", dotenv!("S3_WEBSITE"), s3_path);
+        println!("goal url {}/{}", self.config.s3_website, s3_path);
         Ok(())
     }
 
@@ -417,7 +416,7 @@ impl AppState {
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
 
-        println!("layer url {}/{}", dotenv!("S3_WEBSITE"), s3_path);
+        println!("layer url {}/{}", self.config.s3_website, s3_path);
 
         Ok(())
     }
@@ -438,7 +437,7 @@ impl AppState {
     pub async fn update_mini_app_source(&self, bot_id: String, blocked: bool) -> Result<()> {
         let s3_path = format!("apps/{bot_id}/index.html");
 
-        let html = if bot_id == MAIN_BOT_ID {
+        let html = if bot_id == self.config.main_bot_id {
             HTML_MAIN_BOT_MINI_APP.to_string()
         } else if blocked {
             HTML_BLOCKED_APP.to_string()
@@ -458,7 +457,7 @@ impl AppState {
         let bots_config = self.db.get_app_configs().await?;
 
         for (bot_id, app_config) in bots_config {
-            if bot_id == MAIN_BOT_ID {
+            if bot_id == self.config.main_bot_id {
                 continue;
             }
 
@@ -478,7 +477,7 @@ impl AppState {
         bot_id: &str,
         app_config: &str,
     ) -> Result<()> {
-        if bot_id == MAIN_BOT_ID {
+        if bot_id == self.config.main_bot_id {
             return Err(anyhow::anyhow!("Cant update main bot app"));
         }
         let s3_path = format!("apps/{bot_id}/index.html");
@@ -522,7 +521,7 @@ impl AppState {
         })
         .await?;
 
-        let button_url = format!("{}/apps/{bot_id}/index.html", dotenv!("S3_WEBSITE"));
+        let button_url = format!("{}/apps/{bot_id}/index.html", self.config.s3_website);
 
         tg_api::set_menu_button(&tg_api_url, name, &button_url).await?;
         Ok(())
@@ -573,7 +572,7 @@ impl AppState {
             .await?;
 
         if is_owner? {
-            let user_info = tg_api::get_user_info(MAIN_BOT_TOKEN, admin_id).await?;
+            let user_info = tg_api::get_user_info(&self.config.main_bot_token, admin_id).await?;
             if user_info.ok {
                 let user_data = user_info.result.unwrap();
                 let tma_user_data = json::TMAUserData {
@@ -682,7 +681,7 @@ impl AppState {
     }
 
     pub async fn increase_stars_debt_for(&self, bot_id: String, stars_amount: u32) -> Result<()> {
-        let stars_debt = stars_amount as f32 * PROCENT_FOR_MAIN_BOT;
+        let stars_debt = stars_amount as f32 * self.config.procent_for_main_bot;
         self.db.increase_stars_debt(bot_id, stars_debt).await?;
         Ok(())
     }
@@ -704,7 +703,8 @@ impl AppState {
 
         if let Some(last_payment_date) = last_payment_date {
             let days_since_payment = days_since_last_payment(last_payment_date);
-            if days_since_payment > DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK && star_debt > MAX_STARS_DEBT
+            if days_since_payment > self.config.days_since_last_payment_for_block
+                && star_debt > self.config.max_stars_debt
             {
                 self.update_bot_blocked_status(bot_id, true).await?;
                 return Ok(true);
@@ -717,7 +717,10 @@ impl AppState {
     /// Process debt status for all bots except main bot
     pub async fn process_bots_debt_status(&self) -> Result<()> {
         // Get debt parameters for all bots except main bot in one query
-        let bots_debt_params = self.db.get_all_bots_debt_params().await?;
+        let bots_debt_params = self
+            .db
+            .get_all_bots_debt_params(&self.config.main_bot_id)
+            .await?;
 
         for bot_debt_params in bots_debt_params {
             if bot_debt_params.blocked {
@@ -727,19 +730,19 @@ impl AppState {
             if let Some(last_payment_date) = bot_debt_params.last_payment_date {
                 let days_since_payment = days_since_last_payment(last_payment_date);
 
-                if days_since_payment == DAYS_SINCE_LAST_PAYMENT_FOR_NOTIFICATION {
+                if days_since_payment == self.config.days_since_last_payment_for_notification {
                     self.send_payment_notification_to_owner(bot_debt_params.id.to_string())
                         .await?;
                     continue;
                 }
 
-                if days_since_payment > DAYS_SINCE_LAST_PAYMENT_FOR_BLOCK
-                    && bot_debt_params.star_debt > MAX_STARS_DEBT
+                if days_since_payment > self.config.days_since_last_payment_for_block
+                    && bot_debt_params.star_debt > self.config.max_stars_debt
                 {
                     self.update_bot_blocked_status(bot_debt_params.id.to_string(), true)
                         .await?;
                 }
-            } else if bot_debt_params.star_debt > MAX_STARS_DEBT {
+            } else if bot_debt_params.star_debt > self.config.max_stars_debt {
                 self.update_bot_blocked_status(bot_debt_params.id.to_string(), true)
                     .await?;
             }
@@ -779,7 +782,8 @@ impl AppState {
             amount,
         };
 
-        let invoice_url = tg_api::create_invoice_link(MAIN_BOT_TOKEN, &invoice_params).await?;
+        let invoice_url =
+            tg_api::create_invoice_link(&self.config.main_bot_token, &invoice_params).await?;
 
         Ok(invoice_url)
     }
@@ -801,8 +805,7 @@ impl AppState {
 
         self.put_file_to_s3(image, file_type, &s3_path).await?;
 
-        let s3_website = dotenv!("S3_WEBSITE");
-        let url = format!("{s3_website}/{s3_path}");
+        let url = format!("{}/{s3_path}", self.config.s3_website);
         Ok(url)
     }
 }

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 
-use crate::{app_state::AppState, json, ROOM_CAPACITY};
+use crate::{app_state::AppState, json};
 
 fn get_next_client_id() -> usize {
     static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
@@ -151,7 +151,7 @@ impl AppState {
             if let Some(tx) = rooms.get(bot_id) {
                 let client_count = tx.receiver_count();
 
-                if client_count > ROOM_CAPACITY {
+                if client_count > self.config.room_capacity {
                     return Err(anyhow!("maxout: room already has maximum clients"));
                 }
 
@@ -193,7 +193,11 @@ impl AppState {
         }
     }
 
-    pub async fn send_event_to_room_members(&self, room_id: &str, event: json::WSEvent) -> Result<()> {
+    pub async fn send_event_to_room_members(
+        &self,
+        room_id: &str,
+        event: json::WSEvent,
+    ) -> Result<()> {
         let data = serde_json::to_vec(&event)?;
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(room_id) {

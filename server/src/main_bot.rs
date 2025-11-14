@@ -4,17 +4,24 @@ use anyhow::Result;
 use hyper::Uri;
 use serde_json::Value;
 
-use crate::{app_state::AppState, http, json, tg_api};
+use crate::{app_state::AppState, config::Config, http, json, tg_api};
 
-pub const MAIN_BOT_ID: &str = "stardonationservice";
-pub const MAIN_BOT_TOKEN: &str = "***REMOVED***";
-pub const MAIN_BOT_SECRET_TOKEN: &str = "secret";
-// Torsor now
-pub const MAIN_BOT_OWNER: u64 = 348135868;
-pub const MAIN_BOT_ADMINS: [u64; 1] = [348135868];
+// Helper functions to access main bot configuration from Config
+pub fn get_main_bot_id(config: &Config) -> &str {
+    &config.main_bot_id
+}
 
-//second acc without username (only firstname)
-//id 7637928823
+pub fn get_main_bot_token(config: &Config) -> &str {
+    &config.main_bot_token
+}
+
+pub fn get_main_bot_owner(config: &Config) -> u64 {
+    config.main_bot_owner
+}
+
+pub fn get_main_bot_admins(config: &Config) -> &[u64] {
+    &config.main_bot_admins
+}
 
 pub async fn parse_update(
     update: &json::Update,
@@ -100,4 +107,3 @@ pub async fn parse_update(
     }
     Ok(Value::Null)
 }
-

@@ -689,9 +689,9 @@ impl DataBase {
     }
 
     /// Get debt parameters for all bots except the main bot in one query
-    pub async fn get_all_bots_debt_params(&self) -> Result<Vec<BotDebtParams>> {
+    pub async fn get_all_bots_debt_params(&self, main_bot_id: &str) -> Result<Vec<BotDebtParams>> {
         let conn = &self.conn;
-        let main_bot_id = dotenv!("MAIN_BOT_ID");
+        let main_bot_id = main_bot_id.to_string();
         let params = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(

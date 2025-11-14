@@ -293,13 +293,14 @@ pub async fn send_message(
 mod tests {
     use tokio::time::Instant;
 
-    use crate::main_bot::{MAIN_BOT_OWNER, MAIN_BOT_TOKEN};
+    use crate::{config, main_bot::{get_main_bot_owner, get_main_bot_token}};
 
     use super::*;
 
     #[tokio::test]
     async fn test_get_user_info_by_id() {
-        let token = MAIN_BOT_TOKEN;
+        let config = config::Config::from_env().unwrap();
+        let token = get_main_bot_token(&config);
         let user_id = 2135923914;
 
         let user_info = get_user_info(token, user_id).await.unwrap();
@@ -311,7 +312,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_me() {
-        let token = MAIN_BOT_TOKEN;
+        let config = config::Config::from_env().unwrap();
+        let token = get_main_bot_token(&config);
 
         let start = Instant::now();
         let res = get_bot_info(token).await.unwrap();
@@ -330,7 +332,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_avatar_url() {
-        let token = MAIN_BOT_TOKEN;
+        let config = config::Config::from_env().unwrap();
+        let token = get_main_bot_token(&config);
         //@yuryk
         // let user_id = 487373;
 
@@ -345,7 +348,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_invoice_link() {
-        let token = MAIN_BOT_TOKEN;
+        let config = config::Config::from_env().unwrap();
+        let token = get_main_bot_token(&config);
         let payload = json::CreateInvoiceQueryParam {
             title: "Test Donation".to_string(),
             description: "Test Donation Description".to_string(),
@@ -358,8 +362,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_message() {
-        let token = MAIN_BOT_TOKEN;
-        let chat_id = MAIN_BOT_OWNER;
+        let config = config::Config::from_env().unwrap();
+        let token = get_main_bot_token(&config);
+        let chat_id = get_main_bot_owner(&config);
         let text = "Test message from send_message method";
 
         // Test simple message without reply markup
