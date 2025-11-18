@@ -60,7 +60,9 @@ impl AppState {
     pub async fn new(config: Config) -> Self {
         let db = DataBase::new_sql_lite(&config.db_path)
             .await
-            .expect("Failed to create database");
+            .unwrap_or_else(|e| {
+                panic!("Failed to create database at {}: {}", config.db_path, e);
+            });
 
         let cache = Mutex::new(LruCache::new(config.cache_size));
         let rooms = RwLock::new(HashMap::new());
@@ -164,13 +166,20 @@ impl AppState {
     pub async fn add_bot(&self, token: &str, owner: u64) -> Result<(String, String)> {
         let bot_info = tg_api::get_bot_info(token).await?;
         let bot_info = if bot_info.ok {
-            bot_info.result.unwrap()
+            match bot_info.result {
+                Some(result) => result,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Bot info response is ok but result is None"
+                    ));
+                }
+            }
         } else {
-            return Err(anyhow::anyhow!(
-                "{} {}",
-                bot_info.error_code.unwrap(),
-                bot_info.description.unwrap()
-            ));
+            let error_code = bot_info.error_code.unwrap_or(0);
+            let description = bot_info
+                .description
+                .unwrap_or_else(|| "Unknown error".to_string());
+            anyhow::bail!("{} {}", error_code, description);
         };
 
         let bot_id = get_bot_id_from_username(&bot_info.username);
@@ -584,11 +593,11 @@ impl AppState {
                 self.db.add_bot_admin(bot_id.to_string(), admin_id).await?;
                 Ok(tma_user_data)
             } else {
-                Err(anyhow::anyhow!(
-                    "{} {}",
-                    user_info.error_code.unwrap(),
-                    user_info.description.unwrap()
-                ))
+                let error_code = user_info.error_code.unwrap_or(0);
+                let description = user_info
+                    .description
+                    .unwrap_or_else(|| "Unknown error".to_string());
+                Err(anyhow::anyhow!("{} {}", error_code, description))
             }
         } else {
             Err(anyhow::anyhow!("Only owner can add admin"))
@@ -673,8 +682,9 @@ impl AppState {
 
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(&bot_id) {
-            tx.send(json::RoomMessage::CloseRoom(bot_id.to_string()))
-                .unwrap();
+            if let Err(e) = tx.send(json::RoomMessage::CloseRoom(bot_id.to_string())) {
+                eprintln!("Failed to send close room message: {}", e);
+            }
         }
 
         Ok(())
@@ -820,10 +830,15 @@ pub fn get_bot_id_from_username(bot_username: &str) -> String {
 }
 
 fn days_since_last_payment(last_payment_date: u64) -> u64 {
-    (std::time::SystemTime::now()
+    // This should never fail in practice, but handle gracefully
+    let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as u64
-        - last_payment_date)
-        / 86400
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+
+    if now > last_payment_date {
+        (now - last_payment_date) / 86400
+    } else {
+        0
+    }
 }

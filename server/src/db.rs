@@ -636,8 +636,8 @@ impl DataBase {
     pub async fn decrease_debt(&self, bot_id: String, stars_amount: i64) -> Result<()> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
 
         let conn = &self.conn;
         conn.call(move |conn| {

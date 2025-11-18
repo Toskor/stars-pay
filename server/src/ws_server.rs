@@ -79,14 +79,23 @@ pub async fn handle_client(
                     }
                     OpCode::Text => {
                         last_handshake_time = tokio::time::Instant::now();
-                        let text = String::from_utf8(frame.payload.to_vec()).unwrap();
+                        let text = match String::from_utf8(frame.payload.to_vec()) {
+                            Ok(text) => text,
+                            Err(e) => {
+                                eprintln!("Failed to decode UTF-8 text frame: {}", e);
+                                continue;
+                            }
+                        };
 
                         let response = EchoResponse {
                             bot_id: bot_id.clone(),
                             message: text.clone(),
                         };
                         tmp_buf.clear();
-                        serde_json::to_writer(&mut tmp_buf, &response).unwrap();
+                        if let Err(e) = serde_json::to_writer(&mut tmp_buf, &response) {
+                            eprintln!("Failed to serialize echo response: {}", e);
+                            continue;
+                        }
                         let payload = Payload::Borrowed(&tmp_buf);
                         let frame = Frame::text(payload);
                         let _res = ws.write_frame(frame).await;

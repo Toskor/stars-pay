@@ -30,25 +30,36 @@ const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]"
 
 #[tokio::main]
 async fn main() {
-    let config = config::Config::from_env().expect(
-        "Failed to load configuration. Please check your .env file or environment variables",
-    );
+    let config = match config::Config::from_env() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Failed to load configuration: {}", e);
+            eprintln!("Please check your .env file or environment variables");
+            std::process::exit(1);
+        }
+    };
     let port = config.port.clone();
     let app_state = AppState::new(config).await;
     let arc_app_state = Arc::new(app_state);
-    arc_app_state.prepare().await.unwrap();
+    if let Err(e) = arc_app_state.prepare().await {
+        eprintln!("Failed to prepare application state: {}", e);
+        std::process::exit(1);
+    }
 
     //stardonationservice no need /app route cause /:bot_id/app enough
     let router = Router::new()
-        .route("/:bot_id/webhook", post(handlers::webhook_handler))
+        .route(
+            "/:bot_id/webhook",
+            post(handlers::webhook::webhook_handler),
+        )
         // .route("/:bot_id/app", get(handlers::mini_app))
-        .route("/:bot_id/createInvoice", post(handlers::create_invoice))
+        .route("/:bot_id/createInvoice", post(handlers::bot::create_invoice))
         .route(
             "/:bot_id/avatar/:user_id",
-            get(handlers::avatar_url_handler),
+            get(handlers::bot::avatar_url_handler),
         )
-        .route("/:bot_id/config", post(handlers::config_handler))
-        .route("/:bot_id/updateConfig", post(handlers::update_config))
+        .route("/:bot_id/config", post(handlers::bot::config_handler))
+        .route("/:bot_id/updateConfig", post(handlers::bot::update_config))
         // goal routes
         .route(
             "/:bot_id/updateGoalConfig",
@@ -58,21 +69,21 @@ async fn main() {
         //main bot routes
         .route(
             "/stardonationservice/controlledBots",
-            get(handlers::fetch_user_bots),
+            get(handlers::bot::fetch_user_bots),
         )
-        .route("/stardonationservice/addBot", post(handlers::add_bot))
+        .route("/stardonationservice/addBot", post(handlers::bot::add_bot))
         .route(
             "/stardonationservice/addBotAdmin",
-            post(handlers::add_bot_admin),
+            post(handlers::bot::add_bot_admin),
         )
         .route(
             "/stardonationservice/removeBotAdmin",
-            post(handlers::remove_bot_admin),
+            post(handlers::bot::remove_bot_admin),
         )
-        .route("/stardonationservice/removeBot", post(handlers::remove_bot))
+        .route("/stardonationservice/removeBot", post(handlers::bot::remove_bot))
         .route(
             "/stardonationservice/changeBotToken",
-            post(handlers::change_bot_token),
+            post(handlers::bot::change_bot_token),
         )
         .route(
             "/stardonationservice/refreshLayerToken",
@@ -80,7 +91,7 @@ async fn main() {
         )
         .route(
             "/stardonationservice/getDebtInvoiceURL",
-            post(handlers::get_debt_invoice_url),
+            post(handlers::bot::get_debt_invoice_url),
         )
         .route(
             "/stardonationservice/makeTestDonation",
@@ -88,7 +99,7 @@ async fn main() {
         )
         .route(
             "/stardonationservice/uploadImage",
-            post(handlers::upload_image),
+            post(handlers::bot::upload_image),
         )
         .route("/sound/:sound_name", get(handlers::sound_handler))
         // ws server
@@ -97,21 +108,28 @@ async fn main() {
         .with_state(arc_app_state.clone())
         .layer(cors_layer());
 
-
     let _axum_task = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(format!("localhost:{}", port))
-            .await
-            .unwrap();
+        let listener = match tokio::net::TcpListener::bind(format!("localhost:{}", port)).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                eprintln!("Failed to bind to port {}: {}", port, e);
+                return;
+            }
+        };
         println!("Listening on {:?}", listener);
 
-        axum::serve(listener, router).await.unwrap();
+        if let Err(e) = axum::serve(listener, router).await {
+            eprintln!("Server error: {}", e);
+        }
     });
 
     let _task_for_proccess_bots_debt = tokio::spawn({
         let app_state = arc_app_state.clone();
         async move {
             loop {
-                app_state.process_bots_debt_status().await.unwrap();
+                if let Err(e) = app_state.process_bots_debt_status().await {
+                    eprintln!("Error processing bots debt status: {}", e);
+                }
                 tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 24)).await;
             }
         }

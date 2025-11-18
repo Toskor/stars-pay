@@ -95,20 +95,25 @@ impl AppState {
         let objects_to_delete: Vec<_> = objects
             .iter()
             .filter_map(|obj| {
-                obj.key().map(|key| {
+                obj.key().and_then(|key| {
                     aws_sdk_s3::types::ObjectIdentifier::builder()
                         .key(key)
                         .build()
-                        .expect("Failed to build ObjectIdentifier")
+                        .ok()
                 })
             })
             .collect();
 
         if !objects_to_delete.is_empty() {
-            let delete_request = aws_sdk_s3::types::Delete::builder()
+            let delete_request = match aws_sdk_s3::types::Delete::builder()
                 .set_objects(Some(objects_to_delete))
                 .build()
-                .expect("Failed to build Delete request");
+            {
+                Ok(req) => req,
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Failed to build Delete request: {:?}", e));
+                }
+            };
 
             self.s3_client
                 .delete_objects()
