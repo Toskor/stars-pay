@@ -4,69 +4,50 @@ use axum::{
     extract::{Json, Multipart, Path, State},
     response::{IntoResponse, Response},
 };
-use hyper::{header, HeaderMap, StatusCode};
+use hyper::{header, StatusCode};
 use serde_json::Value;
 use std::{str::FromStr, sync::Arc};
 
-use super::auth;
+use super::auth::{self, AuthenticatedUser, BotAccess, BotAccessWithPayload};
 use crate::{
-    app_state::{AppState, ControlledBots},
+    app_state::{AppState, ControlledBots, UserRole},
     db::DBBot,
     http, json, tg_api,
 };
 
+use std::time::Instant;
+use tokio::task::JoinHandle;
+
 pub async fn add_bot(
-    headers: HeaderMap,
+    AuthenticatedUser { user }: AuthenticatedUser,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::AddBotQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(user);
-            }
-            None
-        })
-        .await;
-
-    match security_check {
-        Ok(Some(user)) => {
-            let res = state.add_bot(&payload.bot_token, user.id).await;
-            match res {
-                Ok((bot_id, bot_name)) => {
-                    let bot_data = json::TMABotData {
-                        id: bot_id,
-                        numeric_id: tg_api::bot_numeric_id_from_token(&payload.bot_token)
-                            .unwrap_or(0),
-                        name: bot_name,
-                        avatar: None,
-                        user_role: "owner".to_string(),
-                        owner: json::TMAUserData {
-                            id: user.id,
-                            username: user.username.unwrap_or_default(),
-                            name: format!("{} {}", user.first_name, user.last_name),
-                            avatar_url: Some(user.photo_url),
-                        },
-                        admins: vec![],
-                        suspended: None,
-                        debt: None,
-                        blocked: None,
-                    };
-                    (
-                        StatusCode::OK,
-                        Json(serde_json::json!({"status": "success", "bot_data": bot_data})),
-                    )
-                }
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
+    let res = state.add_bot(&payload.bot_token, user.id).await;
+    match res {
+        Ok((bot_id, bot_name)) => {
+            let bot_data = json::TMABotData {
+                id: bot_id,
+                numeric_id: tg_api::bot_numeric_id_from_token(&payload.bot_token).unwrap_or(0),
+                name: bot_name,
+                avatar: None,
+                user_role: "owner".to_string(),
+                owner: json::TMAUserData {
+                    id: user.id,
+                    username: user.username.unwrap_or_default(),
+                    name: format!("{} {}", user.first_name, user.last_name),
+                    avatar_url: Some(user.photo_url),
+                },
+                admins: vec![],
+                suspended: None,
+                debt: None,
+                blocked: None,
+            };
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "success", "bot_data": bot_data})),
+            )
         }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while adding bot"})),
-        ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -75,38 +56,23 @@ pub async fn add_bot(
 }
 
 pub async fn add_bot_admin(
-    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<json::AddBotAdminQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::AddBotAdminQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(user.id);
-            }
-            None
-        })
-        .await;
+    if access.role != UserRole::Owner {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "Only owner can add admin"})),
+        );
+    }
 
-    match security_check {
-        Ok(Some(user_id)) => {
-            let res = state
-                .add_bot_admin(user_id, &payload.bot_id, payload.admin_id)
-                .await;
-            match res {
-                Ok(admin_info) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"status": "success", "admin_info": admin_info})),
-                ),
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
-        }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while adding bot admin"})),
+    let res = state
+        .add_bot_admin(access.user.id, &payload.bot_id, payload.admin_id)
+        .await;
+    match res {
+        Ok(admin_info) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "success", "admin_info": admin_info})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -116,38 +82,23 @@ pub async fn add_bot_admin(
 }
 
 pub async fn remove_bot_admin(
-    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<json::RemoveBotAdminQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::RemoveBotAdminQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(user.id);
-            }
-            None
-        })
-        .await;
+    if access.role != UserRole::Owner {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "Only owner can remove admin"})),
+        );
+    }
 
-    match security_check {
-        Ok(Some(user_id)) => {
-            let res = state
-                .remove_bot_admin(user_id, &payload.bot_id, payload.admin_id)
-                .await;
-            match res {
-                Ok(()) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"status": "success"})),
-                ),
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
-        }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while removing bot admin"})),
+    let res = state
+        .remove_bot_admin(access.user.id, &payload.bot_id, payload.admin_id)
+        .await;
+    match res {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "success"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -157,120 +108,68 @@ pub async fn remove_bot_admin(
 }
 
 pub async fn config_handler(
-    headers: HeaderMap,
-    Path(bot_id): Path<String>,
+    auth::BotOwnerOrAdmin { .. }: auth::BotOwnerOrAdmin,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::ConfigQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                if user.id == bot.owner || bot.admins.contains(&user.id) {
-                    return Some(());
-                }
-            }
-            None
-        })
-        .await;
-
-    match security_check {
-        Ok(Some(_)) => match state.get_app_config(payload.target_bot_id).await {
-            Ok(config) => match serde_json::from_str::<Value>(&config) {
-                Ok(json_config) => (StatusCode::OK, Json(json_config)),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": format!("Failed to parse config: {}", e)})),
-                ),
-            },
+    match state.get_app_config(payload.target_bot_id).await {
+        Ok(config) => match serde_json::from_str::<Value>(&config) {
+            Ok(json_config) => (StatusCode::OK, Json(json_config)),
             Err(e) => (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Failed to get config: {}", e)})),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to parse config: {}", e)})),
             ),
         },
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while getting config"})),
-        ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
+            Json(serde_json::json!({"error": format!("Failed to get config: {}", e)})),
         ),
     }
 }
 
 pub async fn update_config(
-    headers: HeaderMap,
-    Path(bot_id): Path<String>,
+    auth::BotOwnerOrAdmin { .. }: auth::BotOwnerOrAdmin,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::UpdateConfigQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                if user.id == bot.owner || bot.admins.contains(&user.id) {
-                    return Some(());
-                }
-            }
-            None
-        })
+    let target_bot_token = match state.get_bot_token(payload.target_bot_id.to_string()).await {
+        Ok(token) => token,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Failed to get bot token: {}", e)})),
+            );
+        }
+    };
+    let Ok(mut tma_app_config) = serde_json::from_str::<json::TMAAppConfig>(&payload.app_config)
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid app config"})),
+        );
+    };
+
+    generate_invoice_urls(&mut tma_app_config, &target_bot_token).await;
+
+    let config_str = match serde_json::to_string(&tma_app_config) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to serialize config: {}", e)})),
+            );
+        }
+    };
+
+    let upd_res = state
+        .update_bot_config(payload.target_bot_id, config_str)
         .await;
 
-    match security_check {
-        Ok(Some(_)) => {
-            let target_bot_token = match state
-                .get_bot_token(payload.target_bot_id.to_string())
-                .await
-            {
-                Ok(token) => token,
-                Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(
-                            serde_json::json!({"error": format!("Failed to get bot token: {}", e)}),
-                        ),
-                    );
-                }
-            };
-            let Ok(mut tma_app_config) =
-                serde_json::from_str::<json::TMAAppConfig>(&payload.app_config)
-            else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "Invalid app config"})),
-                );
-            };
-            generate_invoice_urls(&mut tma_app_config, &target_bot_token).await;
-
-            let config_str = match serde_json::to_string(&tma_app_config) {
-                Ok(s) => s,
-                Err(e) => {
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(
-                            serde_json::json!({"error": format!("Failed to serialize config: {}", e)}),
-                        ),
-                    );
-                }
-            };
-
-            let upd_res = state
-                .update_bot_config(payload.target_bot_id, config_str)
-                .await;
-            match upd_res {
-                Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
-                Err(err) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": err.to_string()})),
-                ),
-            }
-        }
-        Ok(None) => (
+    match upd_res {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
+        Err(err) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while updating config"})),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
+            Json(serde_json::json!({"error": err.to_string()})),
         ),
     }
 }
@@ -312,47 +211,28 @@ async fn generate_invoice_urls(tma_app_config: &mut json::TMAAppConfig, token: &
 }
 
 pub async fn fetch_user_bots(
-    headers: HeaderMap,
+    AuthenticatedUser { user: web_app_user }: AuthenticatedUser,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(user);
+    match state.get_controlled_bots(web_app_user.id).await {
+        Ok(controlled_bots) => {
+            match convert_controlled_bots_to_json_value(
+                controlled_bots,
+                web_app_user,
+                state.config.max_stars_debt,
+            )
+            .await
+            {
+                Ok(json_value) => (StatusCode::OK, Json(json_value)),
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                ),
             }
-            None
-        })
-        .await;
-
-    match security_check {
-        Ok(Some(web_app_user)) => match state.get_controlled_bots(web_app_user.id).await {
-            Ok(controlled_bots) => {
-                match convert_controlled_bots_to_json_value(
-                    controlled_bots,
-                    web_app_user,
-                    state.config.max_stars_debt,
-                )
-                .await
-                {
-                    Ok(json_value) => (StatusCode::OK, Json(json_value)),
-                    Err(e) => (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": e.to_string()})),
-                    ),
-                }
-            }
-            Err(e) => (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Failed to get controlled bots: {}", e)})),
-            ),
-        },
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while fetching user bots"})),
-        ),
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
+            Json(serde_json::json!({"error": format!("Failed to get controlled bots: {}", e)})),
         ),
     }
 }
@@ -362,10 +242,6 @@ async fn convert_controlled_bots_to_json_value(
     web_app_user: json::WebAppUser, //user that opened mini app
     max_stars_debt: f64,
 ) -> Result<Value> {
-    //todo remove time
-    use std::time::Instant;
-    use tokio::task::JoinHandle;
-
     let mut tasks: Vec<JoinHandle<Option<json::TMABotData>>> = Vec::new();
 
     // Process owner bots
@@ -642,36 +518,21 @@ async fn process_admin_info(
 }
 
 pub async fn remove_bot(
-    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<json::RemoveBotQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::RemoveBotQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(user.id);
-            }
-            None
-        })
-        .await;
+    if access.role != UserRole::Owner {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "Only owner can remove bot"})),
+        );
+    }
 
-    match security_check {
-        Ok(Some(user_id)) => {
-            let res = state.remove_bot(user_id, payload.bot_id).await;
-            match res {
-                Ok(()) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"status": "success"})),
-                ),
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
-        }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while removing bot"})),
+    let res = state.remove_bot(access.user.id, payload.bot_id).await;
+    match res {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "success"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -681,38 +542,24 @@ pub async fn remove_bot(
 }
 
 pub async fn change_bot_token(
-    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<json::ChangeBotTokenQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::ChangeBotTokenQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(user.id);
-            }
-            None
-        })
+    if access.role != UserRole::Owner && access.role != UserRole::Admin {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "Only owner or admin can change bot token"})),
+        );
+    }
+
+    let res = state
+        .change_bot_token(access.user.id, payload.bot_id, payload.new_token)
         .await;
 
-    match security_check {
-        Ok(Some(user_id)) => {
-            let res = state
-                .change_bot_token(user_id, payload.bot_id, payload.new_token)
-                .await;
-            match res {
-                Ok(()) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"status": "success"})),
-                ),
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
-        }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while changing bot token"})),
+    match res {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "success"})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -723,95 +570,41 @@ pub async fn change_bot_token(
 
 // #[axum::debug_handler]
 pub async fn get_debt_invoice_url(
-    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<json::GetDebtInvoiceURLQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::GetDebtInvoiceURLQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(_user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .await;
-
-    match security_check {
-        Ok(Some(_)) => {
-            let invoice_url = match state.generate_debt_invoice_url(payload.target_bot_id).await {
-                Ok(url) => url,
-                Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": e.to_string()})),
-                    );
-                }
-            };
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({"invoice_url": invoice_url})),
-            )
-        }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(
-                serde_json::json!({"error": "security check failure while getting debt invoice url"}),
-            ),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
+    if access.role != UserRole::Owner && access.role != UserRole::Admin {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "Only owner or admin can get debt invoice URL"})),
+        );
     }
+
+    let invoice_url = match state.generate_debt_invoice_url(payload.target_bot_id).await {
+        Ok(url) => url,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": e.to_string()})),
+            );
+        }
+    };
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"invoice_url": invoice_url})),
+    )
 }
 
 // #[axum::debug_handler]
 pub async fn create_invoice(
-    headers: HeaderMap,
-    Path(bot_id): Path<String>,
-    State(state): State<Arc<AppState>>,
+    auth::BotOwnerOrAdmin { bot, .. }: auth::BotOwnerOrAdmin,
+    State(_state): State<Arc<AppState>>,
     Json(payload): Json<json::CreateInvoiceQueryParam>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&bot_id, |bot| {
-            if let Some(user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                let role = if bot.admins.contains(&user.id) {
-                    "admin"
-                } else {
-                    "user"
-                };
-                return Some((bot.token.clone(), role));
-            }
-            None
-        })
-        .await;
-
-    match security_check {
-        Ok(Some((token, role))) => {
-            if role != "admin" {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "Inappropriate user role"})),
-                );
-            }
-
-            match tg_api::create_invoice_link(&token, &payload).await {
-                Ok(url) => {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({"invoice_url": url})),
-                    )
-                }
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
-        }
-        Ok(None) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while creating invoice"})),
+    match tg_api::create_invoice_link(&bot.token, &payload).await {
+        Ok(url) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"invoice_url": url})),
         ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -821,36 +614,11 @@ pub async fn create_invoice(
 }
 
 pub async fn avatar_url_handler(
-    headers: HeaderMap,
-    State(state): State<Arc<AppState>>,
-    Path((bot_id, user_id)): Path<(String, String)>,
+    auth::BotAccess { bot, .. }: auth::BotAccess,
+    Path((_bot_id, user_id)): Path<(String, String)>,
+    State(_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&bot_id, |bot| {
-            if let Some(_user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(bot.token.clone());
-            }
-            None
-        })
-        .await;
-
-    let token = match security_check {
-        Ok(Some(token)) => token,
-        Ok(None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "security check failure"})),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response();
-        }
-    };
+    let token = bot.token.clone();
 
     let user_id_parsed = match user_id.parse::<u64>() {
         Ok(id) => id,
@@ -934,71 +702,43 @@ pub async fn avatar_url_handler(
 }
 
 pub async fn upload_image(
-    headers: HeaderMap,
+    AuthenticatedUser { .. }: AuthenticatedUser,
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
-    let security_check = state
-        .with_record(&state.config.main_bot_id, |bot| {
-            if let Some(_user) = auth::check_hash_in_headers(&headers, &bot.token) {
-                return Some(());
-            }
-            None
-        })
-        .await;
+    let mut image = Option::<Vec<u8>>::None;
+    let mut image_type = Option::<String>::None;
 
-    match security_check {
-        Ok(Some(_)) => {
-            let mut image = Option::<Vec<u8>>::None;
-            let mut image_type = Option::<String>::None;
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let Some(name) = field.name() else {
+            continue;
+        };
 
-            while let Ok(Some(field)) = multipart.next_field().await {
-                let Some(name) = field.name() else {
-                    continue;
-                };
-
-                if name == "image" {
-                    let Some(content_type) = field.content_type() else {
-                        continue;
-                    };
-                    if content_type.starts_with("image/") {
-                        image_type = Some(content_type.to_string());
-                        image = field.bytes().await.ok().map(|b| b.to_vec());
-                    }
-                }
-            }
-
-            match (image, image_type) {
-                (Some(img), Some(img_type)) => {
-                    match state.upload_image_to_s3(img, &img_type).await {
-                        Ok(url) => {
-                            println!("upload image url: {}", url);
-                            (StatusCode::OK, Json(serde_json::json!({"image_url": url})))
-                        }
-                        Err(e) => (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(
-                                serde_json::json!({"error": format!("Failed to upload image: {}", e)}),
-                            ),
-                        ),
-                    }
-                }
-                _ => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": "Invalid upload image params"})),
-                ),
+        if name == "image" {
+            let Some(content_type) = field.content_type() else {
+                continue;
+            };
+            if content_type.starts_with("image/") {
+                image_type = Some(content_type.to_string());
+                image = field.bytes().await.ok().map(|b| b.to_vec());
             }
         }
-        Ok(None) => (
+    }
+
+    match (image, image_type) {
+        (Some(img), Some(img_type)) => match state.upload_image_to_s3(img, &img_type).await {
+            Ok(url) => {
+                println!("upload image url: {}", url);
+                (StatusCode::OK, Json(serde_json::json!({"image_url": url})))
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to upload image: {}", e)})),
+            ),
+        },
+        _ => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "security check failure while uploading image"})),
+            Json(serde_json::json!({"error": "Invalid upload image params"})),
         ),
-        Err(e) => {
-            println!("upload image error: {:?}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-        }
     }
 }

@@ -14,7 +14,7 @@ use crate::{
 
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserRole {
     Owner,
     Admin,
