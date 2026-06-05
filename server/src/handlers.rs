@@ -47,14 +47,14 @@ pub async fn ws_handler(
             Ok((response, fut)) => {
                 tokio::task::spawn(async move {
                     if let Err(e) = handle_client(fut, state.clone(), bot_id).await {
-                        eprintln!("Error in websocket connection: {}", e);
+                        tracing::warn!(error = %e, "ws connection error");
                     }
                 });
 
                 response.into_response()
             }
             Err(e) => {
-                eprintln!("Failed to upgrade websocket: {}", e);
+                tracing::warn!(error = %e, "failed to upgrade websocket");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(serde_json::json!({"error": "Failed to upgrade websocket connection"})),
@@ -63,7 +63,7 @@ pub async fn ws_handler(
             }
         },
         Ok(None) => {
-            println!("Ws token mismatch");
+            tracing::warn!(bot_id = %bot_id, "ws token mismatch");
             (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Ws token mismatch"})),
@@ -94,7 +94,7 @@ pub async fn sound_handler(Path(sound_name): Path<String>) -> impl IntoResponse 
             {
                 Ok(response) => response.into_response(),
                 Err(e) => {
-                    eprintln!("Failed to build sound response: {}", e);
+                    tracing::error!(error = %e, "failed to build sound response");
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(serde_json::json!({"error": "Failed to build response"})),
@@ -104,7 +104,7 @@ pub async fn sound_handler(Path(sound_name): Path<String>) -> impl IntoResponse 
             }
         }
         Err(e) => {
-            eprintln!("Failed to open sound file: {}", e);
+            tracing::warn!(error = %e, "failed to open sound file");
             (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Sound file not found"})),

@@ -25,6 +25,9 @@ lru = {version = "0.12"}
 dotenv = "0.15"
 dotenv_codegen = {version = "0.15"}
 
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 hmac = "0.12"
 form_urlencoded = "1.2"
 sha2 = "0.10"

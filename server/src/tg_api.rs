@@ -50,9 +50,9 @@ pub async fn get_webhook_info(tg_api_url: &str) -> Result<()> {
     let res = http::get(&uri, None).await?;
 
     if res.status != StatusCode::OK {
-        println!("bad status {}", res.status);
+        tracing::warn!(status = %res.status, "getWebhookInfo bad status");
     } else {
-        println!("{}", res.to_str().unwrap())
+        tracing::debug!(body = %res.to_str().unwrap_or(""), "getWebhookInfo ok");
     }
 
     Ok(())
@@ -76,12 +76,9 @@ pub async fn set_bot_commands(token: &str, commands: &Vec<json::BotCommand>) -> 
     )]);
 
     let res = http::post(&uri, Some(&headers), commands_str).await?;
-    println!("set_bot_commands after post");
 
     if res.status != StatusCode::OK {
-        println!("bad status {}", res.status);
-    } else {
-        // println!("{}", res.to_str().unwrap())
+        tracing::warn!(status = %res.status, "setMyCommands bad status");
     }
 
     Ok(())
@@ -128,7 +125,7 @@ pub async fn create_invoice_link(
 
     if res.status != StatusCode::OK {
         let err: json::Error = res.to_json()?;
-        println!("cil bad status {} {}", res.status, err.description);
+        tracing::warn!(status = %res.status, error = %err.description, "createInvoiceLink bad status");
 
         return Err(anyhow::anyhow!(err.description));
     } else {

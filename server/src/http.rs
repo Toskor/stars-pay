@@ -136,7 +136,7 @@ impl Client {
         let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
         tokio::task::spawn(async move {
             if let Err(err) = conn.await {
-                println!("Connection failed: {:?}", err);
+                tracing::warn!(error = ?err, "http connection failed");
             }
         });
         self.sender = Some(sender);
@@ -168,7 +168,7 @@ async fn fetch(
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
     tokio::task::spawn(async move {
         if let Err(err) = conn.await {
-            println!("Connection failed: {:?}", err);
+            tracing::warn!(error = ?err, "http connection failed");
         }
     });
 
@@ -220,7 +220,7 @@ async fn send(
             //     encoder.into_inner().into()
             // }
             Some(_) => {
-                println!("unsuported content_encoding compress");
+                tracing::warn!("unsupported content_encoding for compression");
                 debug_assert!(false);
                 body.into()
             }
@@ -271,7 +271,7 @@ async fn send(
         //     Ok(Response::new(status, decoder.into_inner()))
         // }
         Some(wtf) => {
-            eprintln!("unsupported content type: {wtf}");
+            tracing::warn!(content_type = %wtf, "unsupported content encoding");
             debug_assert!(false);
             let data = res.collect().await?.to_bytes().into();
             Ok(Response::new(status, data))
@@ -289,7 +289,7 @@ async fn fetch_data(uri: &Uri, path: &str) -> Result<()> {
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
     tokio::task::spawn(async move {
         if let Err(err) = conn.await {
-            println!("Connection failed: {:?}", err);
+            tracing::warn!(error = ?err, "http connection failed");
         }
     });
 

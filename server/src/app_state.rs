@@ -391,7 +391,7 @@ impl AppState {
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
 
-        println!("goal url {}/{}", self.config.s3_website, s3_path);
+        tracing::debug!(url = %format!("{}/{}", self.config.s3_website, s3_path), "uploaded goal page");
         Ok(())
     }
 
@@ -401,7 +401,7 @@ impl AppState {
         let old_s3_path = format!("goals/{}-{}.html", bot_id, old_uuid);
 
         if self.file_exists_in_s3(&old_s3_path).await? {
-            println!("Removing old goal file from S3: {}", old_s3_path);
+            tracing::debug!(path = %old_s3_path, "removing old goal file from S3");
             self.remove_file_from_s3(&old_s3_path).await?;
         }
 
@@ -425,7 +425,7 @@ impl AppState {
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
 
-        println!("layer url {}/{}", self.config.s3_website, s3_path);
+        tracing::debug!(url = %format!("{}/{}", self.config.s3_website, s3_path), "uploaded layer page");
 
         Ok(())
     }
@@ -436,7 +436,7 @@ impl AppState {
         let old_s3_path = format!("layers/{}-{}.html", bot_id, old_uuid);
 
         if self.file_exists_in_s3(&old_s3_path).await? {
-            println!("Removing old layer file from S3: {}", old_s3_path);
+            tracing::debug!(path = %old_s3_path, "removing old layer file from S3");
             self.remove_file_from_s3(&old_s3_path).await?;
         }
 
@@ -505,7 +505,7 @@ impl AppState {
         ws_token: &str,
         goal_config: json::GoalProps,
     ) -> Result<()> {
-        println!("start update_goal_config handler");
+        tracing::debug!(bot_id = %bot_id, "update_goal_config");
         let goal_config_str = serde_json::to_string(&goal_config)?;
         let ws_url = self.generate_ws_url_with_token(&bot_id, ws_token).await?;
 
@@ -683,7 +683,7 @@ impl AppState {
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(&bot_id) {
             if let Err(e) = tx.send(json::RoomMessage::CloseRoom(bot_id.to_string())) {
-                eprintln!("Failed to send close room message: {}", e);
+                tracing::warn!(bot_id = %bot_id, error = %e, "failed to send close-room message");
             }
         }
 

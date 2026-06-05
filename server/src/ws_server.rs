@@ -1,7 +1,6 @@
 pub use anyhow::{anyhow, Result};
 
 use fastwebsockets::{upgrade, Frame, OpCode, Payload, WebSocketError};
-use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
@@ -11,13 +10,6 @@ use crate::{app_state::AppState, json};
 fn get_next_client_id() -> usize {
     static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
     NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed)
-}
-
-//just for test, removed later
-#[derive(Debug, Serialize, Deserialize)]
-struct EchoResponse {
-    bot_id: String,
-    message: String,
 }
 
 pub async fn handle_client(
@@ -30,7 +22,7 @@ pub async fn handle_client(
     let (room_tx, room_members_count) = match app_state.get_or_create_room(&bot_id).await {
         Ok(result) => result,
         Err(e) => {
-            println!("Error joining room for bot_id {}: {}", bot_id, e);
+            tracing::warn!(bot_id = %bot_id, error = %e, "error joining room");
 
             let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
 
@@ -47,58 +39,34 @@ pub async fn handle_client(
     };
 
     let mut room_rx = room_tx.subscribe();
-    println!(
-        "Client {} connected with bot_id: {} (room size: {})",
+    tracing::info!(
         cid,
-        bot_id,
-        room_members_count + 1
+        bot_id = %bot_id,
+        room_size = room_members_count + 1,
+        "ws client connected"
     );
 
     let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
-    let mut tmp_buf = vec![];
     let mut last_handshake_time = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
             Ok(frame) = ws.read_frame() => {
-                // println!("OpCode: {:?}", frame.opcode);
                 match frame.opcode {
                     OpCode::Close => {
-                        println!("OpCode::Close received from client {}", cid);
+                        tracing::debug!(cid, "ws close frame received");
                         break;
                     }
                     OpCode::Ping => {
-                        // println!("OpCode::Ping received from client {}", cid);
                         last_handshake_time = tokio::time::Instant::now();
                         let pong = Frame::pong(frame.payload);
                         let _res = ws.write_frame(pong).await;
                     }
                     OpCode::Pong => {
-                        // println!("OpCode::Pong received from client {}", cid);
                         last_handshake_time = tokio::time::Instant::now();
                     }
                     OpCode::Text => {
                         last_handshake_time = tokio::time::Instant::now();
-                        let text = match String::from_utf8(frame.payload.to_vec()) {
-                            Ok(text) => text,
-                            Err(e) => {
-                                eprintln!("Failed to decode UTF-8 text frame: {}", e);
-                                continue;
-                            }
-                        };
-
-                        let response = EchoResponse {
-                            bot_id: bot_id.clone(),
-                            message: text.clone(),
-                        };
-                        tmp_buf.clear();
-                        if let Err(e) = serde_json::to_writer(&mut tmp_buf, &response) {
-                            eprintln!("Failed to serialize echo response: {}", e);
-                            continue;
-                        }
-                        let payload = Payload::Borrowed(&tmp_buf);
-                        let frame = Frame::text(payload);
-                        let _res = ws.write_frame(frame).await;
                     }
                     _ => {}
                 }
@@ -107,7 +75,7 @@ pub async fn handle_client(
                 match msg {
                     json::RoomMessage::CloseConnection(target_cid) => {
                         if target_cid == cid {
-                            println!("Received close signal for client {}", target_cid);
+                            tracing::debug!(cid = target_cid, "close signal for client");
                             let close_frame = Frame::close(1000, b"Server initiated shutdown");
                             let _ = ws.write_frame(close_frame).await;
                             break;
@@ -116,12 +84,12 @@ pub async fn handle_client(
                     json::RoomMessage::Text(text_data) => {
                         let frame = Frame::text(Payload::Owned(text_data));
                         if let Err(e) = ws.write_frame(frame).await {
-                            println!("Error sending message to client {} in room {}: {}", cid, bot_id, e);
+                            tracing::warn!(cid, bot_id = %bot_id, error = %e, "error writing ws frame");
                             break;
                         }
                     }
                     json::RoomMessage::CloseRoom(bot_id) => {
-                        println!("Received close signal for room_id: {}", bot_id);
+                        tracing::debug!(bot_id = %bot_id, "close signal for room");
                         let close_frame = Frame::close(1000, b"Server initiated shutdown");
                         let _ = ws.write_frame(close_frame).await;
                         break;
@@ -133,11 +101,11 @@ pub async fn handle_client(
                 if last_handshake_time.elapsed() < Duration::from_secs(8) {
                     let ping = Frame::new(true, OpCode::Ping, None, Payload::Borrowed(b""));
                     if let Err(e) = ws.write_frame(ping).await {
-                        println!("Error sending ping: {}", e);
+                        tracing::warn!(cid, error = %e, "error sending ws ping");
                         break;
                     }
                 } else {
-                    println!("No pong received within 4 seconds, closing connection");
+                    tracing::debug!(cid, "no pong within timeout, closing");
                     break;
                 }
             }
@@ -145,7 +113,7 @@ pub async fn handle_client(
     }
 
     app_state.remove_client_from_room(&bot_id, cid).await;
-    println!("Client {} disconnected from bot_id: {}", cid, bot_id);
+    tracing::info!(cid, bot_id = %bot_id, "ws client disconnected");
     Ok(())
 }
 
@@ -193,12 +161,9 @@ impl AppState {
         if should_remove_room {
             let mut rooms = self.rooms.write().await;
             rooms.remove(bot_id);
-            println!("Removed empty room for bot_id: {}", bot_id);
+            tracing::debug!(bot_id = %bot_id, "removed empty room");
         } else {
-            println!(
-                "Client {} left room {}, {} clients remaining",
-                cid, bot_id, left_in_room
-            );
+            tracing::debug!(cid, bot_id = %bot_id, remaining = left_in_room, "client left room");
         }
     }
 

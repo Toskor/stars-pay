@@ -35,13 +35,13 @@ pub async fn webhook_handler(
     if let Ok((security_check_result, token)) = res {
         //safety check
         if !security_check_result {
-            println!("Failed security check for {}", bot_id);
+            tracing::warn!(bot_id = %bot_id, "failed webhook security check");
             return (StatusCode::UNAUTHORIZED, Json(Value::Null));
         }
 
         //todo redo
         if bot_id == state.config.main_bot_id {
-            println!("Main bot webhook");
+            tracing::debug!("main bot webhook received");
             match main_bot::parse_update(&payload, &token, &state).await {
                 Ok(json) => return (StatusCode::OK, Json(json)),
                 Err(e) => error = e,

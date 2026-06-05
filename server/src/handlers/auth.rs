@@ -19,10 +19,7 @@ pub fn check_secret_token(secret_token: &str, headers: &HeaderMap) -> bool {
         if header_token == secret_token {
             return true;
         } else {
-            println!(
-                "check_secret_token header_token: {:?} secret_token: {:?}",
-                header_token, secret_token
-            );
+            tracing::warn!("check_secret_token: header/secret mismatch");
         }
     }
 

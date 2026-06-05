@@ -74,7 +74,7 @@ pub async fn parse_update(
                     .process_payment(bot_id.clone(), stars_amount as i64)
                     .await
                 {
-                    println!("Payment processing for bot {} failed: {}", bot_id, e);
+                    tracing::error!(bot_id = %bot_id, error = %e, "payment processing failed");
                     error_message = Some("Payment processing failed".to_string());
                 }
             }
@@ -101,7 +101,7 @@ pub async fn parse_update(
             }
         }
         _ => {
-            println!("Unsuported update by MainBot");
+            tracing::debug!("unsupported update by main bot");
             return Err(anyhow::anyhow!("Unsuported update by MainBot"));
         }
     }

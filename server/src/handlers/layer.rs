@@ -49,7 +49,7 @@ pub async fn update_goal_config(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::GoalPropsQueryParam>,
 ) -> impl IntoResponse {
-    println!("start update_goal_config");
+    tracing::debug!(bot_id = %bot.id, "update_goal_config");
     let Ok(ws_token) = state.get_bot_ws_token(bot.id.clone()).await else {
         return (
             StatusCode::BAD_REQUEST,

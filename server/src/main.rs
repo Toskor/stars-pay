@@ -30,11 +30,17 @@ const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]"
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,tg_stars=debug")),
+        )
+        .init();
+
     let config = match config::Config::from_env() {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Failed to load configuration: {}", e);
-            eprintln!("Please check your .env file or environment variables");
+            tracing::error!(error = %e, "failed to load configuration; check .env or env vars");
             std::process::exit(1);
         }
     };
@@ -42,7 +48,7 @@ async fn main() {
     let app_state = AppState::new(config).await;
     let arc_app_state = Arc::new(app_state);
     if let Err(e) = arc_app_state.prepare().await {
-        eprintln!("Failed to prepare application state: {}", e);
+        tracing::error!(error = %e, "failed to prepare application state");
         std::process::exit(1);
     }
 
@@ -109,14 +115,14 @@ async fn main() {
         let listener = match tokio::net::TcpListener::bind(format!("localhost:{}", port)).await {
             Ok(listener) => listener,
             Err(e) => {
-                eprintln!("Failed to bind to port {}: {}", port, e);
+                tracing::error!(port = %port, error = %e, "failed to bind tcp listener");
                 return;
             }
         };
-        println!("Listening on {:?}", listener);
+        tracing::info!(?listener, "axum server listening");
 
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("Server error: {}", e);
+            tracing::error!(error = %e, "axum server crashed");
         }
     });
 
@@ -125,7 +131,7 @@ async fn main() {
         async move {
             loop {
                 if let Err(e) = app_state.process_bots_debt_status().await {
-                    eprintln!("Error processing bots debt status: {}", e);
+                    tracing::error!(error = %e, "error processing bots debt status");
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 24)).await;
             }

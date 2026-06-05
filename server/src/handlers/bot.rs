@@ -269,15 +269,15 @@ async fn convert_controlled_bots_to_json_value(
                 bots.push(tma_bot_data);
             }
             Ok(None) => {
-                println!("Task returned None");
+                tracing::debug!("task returned None");
             }
             Err(e) => {
-                println!("Task join error: {}", e);
+                tracing::warn!(error = %e, "task join error");
             }
         }
     }
 
-    println!("Tasks completed in: {:?}", tasks_start.elapsed());
+    tracing::debug!(elapsed = ?tasks_start.elapsed(), "tasks completed");
 
     let main_page_props = json::MainBotMainPageProps { bots };
     let json_value = serde_json::to_value(&main_page_props)?;
@@ -320,12 +320,12 @@ fn process_owner_bots(
                 }
                 Ok(Err(e)) => {
                     //todo here need to log error
-                    println!("Error fetching bot info: {} error {}", bot.id, e);
+                    tracing::warn!(bot_id = %bot.id, error = %e, "error fetching bot info");
                     None
                 }
                 Err(e) => {
                     //task error
-                    println!("bot_info task error: {}", e);
+                    tracing::warn!(error = %e, "bot_info task error");
                     None
                 }
             };
@@ -400,12 +400,12 @@ fn process_admin_bots(
                 }
                 Ok(Err(e)) => {
                     //todo here need to log error
-                    println!("Error fetching bot info: {} error {}", bot.id, e);
+                    tracing::warn!(bot_id = %bot.id, error = %e, "error fetching bot info");
                     None
                 }
                 Err(e) => {
                     //task error
-                    println!("bot_info task error: {}", e);
+                    tracing::warn!(error = %e, "bot_info task error");
                     None
                 }
             };
@@ -423,12 +423,12 @@ fn process_admin_bots(
                 }
                 Ok(Err(e)) => {
                     //todo here need to log error
-                    println!("Error fetching owner info for bot: {} error {}", bot.id, e);
+                    tracing::warn!(bot_id = %bot.id, error = %e, "error fetching owner info");
                     return None;
                 }
                 Err(e) => {
                     //task error
-                    println!("owner_info task error: {}", e);
+                    tracing::warn!(error = %e, "owner_info task error");
                     return None;
                 }
             };
@@ -666,7 +666,7 @@ pub async fn avatar_url_handler(
                         .header(header::CONTENT_TYPE, content_type)
                         .body(Body::from(image_data))
                         .map_err(|e| {
-                            eprintln!("Failed to build response: {}", e);
+                            tracing::error!(error = %e, "failed to build response");
                             (
                                 StatusCode::INTERNAL_SERVER_ERROR,
                                 Json(serde_json::json!({"error": "Failed to build response"})),
@@ -728,7 +728,7 @@ pub async fn upload_image(
     match (image, image_type) {
         (Some(img), Some(img_type)) => match state.upload_image_to_s3(img, &img_type).await {
             Ok(url) => {
-                println!("upload image url: {}", url);
+                tracing::debug!(url = %url, "uploaded image");
                 (StatusCode::OK, Json(serde_json::json!({"image_url": url})))
             }
             Err(e) => (
