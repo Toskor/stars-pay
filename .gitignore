@@ -1,6 +1,9 @@
-target
-.vscode/settings.json
-.vscode
-file.sh
-server/src/sounds/donation_sound.mp3
+target/
+.vscode/
+.DS_Store
 .env
+file.sh
+refactor.md
+server/src/sounds/donation_sound.mp3
+db/*.sqlite
+db/*.sqlite-journal

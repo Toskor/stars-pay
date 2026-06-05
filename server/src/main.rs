@@ -46,14 +46,11 @@ async fn main() {
         std::process::exit(1);
     }
 
-    //stardonationservice no need /app route cause /:bot_id/app enough
     let router = Router::new()
         .route(
             "/:bot_id/webhook",
             post(handlers::webhook::webhook_handler),
         )
-        // .route("/:bot_id/app", get(handlers::mini_app))
-        .route("/:bot_id/createInvoice", post(handlers::bot::create_invoice))
         .route(
             "/:bot_id/avatar/:user_id",
             get(handlers::bot::avatar_url_handler),
