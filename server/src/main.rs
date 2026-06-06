@@ -1,3 +1,6 @@
+//! tg-stars server: Axum HTTP API + WebSocket fan-out for the Telegram
+//! Stars donation service. See `README.md` for the high-level architecture.
+
 use app_state::AppState;
 use axum::{
     routing::{get, post},

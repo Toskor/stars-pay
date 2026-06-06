@@ -1,3 +1,5 @@
+//! Update handling for the main control bot (StarDonationServiceBot).
+
 use std::{str::FromStr, sync::Arc};
 
 use anyhow::Result;
@@ -6,7 +8,6 @@ use serde_json::Value;
 
 use crate::{app_state::AppState, config::Config, http, json, tg_api};
 
-// Helper functions to access main bot configuration from Config
 pub fn get_main_bot_id(config: &Config) -> &str {
     &config.main_bot_id
 }

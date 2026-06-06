@@ -1,3 +1,5 @@
+//! Thin wrapper around the Telegram Bot API (HTTP-only, no SDK).
+
 use std::str::FromStr;
 
 use crate::{http, json, WEBHOOK_ALLOWED_UPDATES};

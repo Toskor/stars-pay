@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::num::NonZeroUsize;
 
-/// Application configuration loaded from environment variables
+/// Runtime configuration loaded from environment variables. See `.env.example`.
 #[derive(Debug, Clone)]
 pub struct Config {
     // Telegram Bot Configuration

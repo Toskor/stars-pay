@@ -1,3 +1,6 @@
+//! WebSocket overlay server: streamers' OBS browser sources subscribe to a
+//! per-bot room and receive donation events in real time.
+
 pub use anyhow::{anyhow, Result};
 
 use fastwebsockets::{upgrade, Frame, OpCode, Payload, WebSocketError};
@@ -12,6 +15,8 @@ fn get_next_client_id() -> usize {
     NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Run the per-client WebSocket loop: ping/pong heartbeat, forward room
+/// broadcasts to the socket, and clean up on disconnect.
 pub async fn handle_client(
     fut: upgrade::UpgradeFut,
     app_state: std::sync::Arc<crate::app_state::AppState>,

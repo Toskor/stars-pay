@@ -1,7 +1,11 @@
+//! SQLite persistence layer. Bots and per-bot config are stored in a single
+//! `bots` table; `admins` is a JSON array (good enough at this scale).
+
 use anyhow::Result;
 use async_rusqlite::{rusqlite::named_params, Connection};
 use rusqlite::functions::FunctionFlags;
 
+/// Persisted bot record.
 #[derive(Debug, Clone)]
 pub struct DBBot {
     ///bot username without "bot" end

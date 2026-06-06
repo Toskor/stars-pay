@@ -12,8 +12,11 @@ use crate::{
     HTML_MINI_APP,
 };
 
+/// WebSocket fan-out rooms keyed by bot id. Each room broadcasts donation
+/// events to all overlays connected for that streamer.
 pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
+/// Caller's relationship to a bot, decided by webhook/auth extractors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserRole {
     Owner,
@@ -40,13 +43,14 @@ impl UserRole {
     }
 }
 
-//for AppState
+/// Bots a user controls, split by role.
 #[derive(Debug)]
 pub struct ControlledBots {
     pub owner_bots: Vec<DBBot>,
     pub admin_bots: Vec<DBBot>,
 }
 
+/// Shared application state passed to every handler as `Arc<AppState>`.
 //todo sometimes long delay in webhook (mb when change webhook url)
 pub struct AppState {
     pub cache: Mutex<LruCache<String, DBBot>>,

@@ -1,3 +1,7 @@
+//! Axum HTTP handlers. Submodules group routes by concern (`bot`, `webhook`,
+//! `layer`, `auth` extractors). Every handler returns `AppResult<_>` so error
+//! → HTTP mapping lives in one place (`crate::error`).
+
 use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
