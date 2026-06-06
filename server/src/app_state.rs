@@ -43,6 +43,24 @@ impl UserRole {
     }
 }
 
+#[cfg(test)]
+mod user_role_tests {
+    use super::UserRole;
+
+    #[test]
+    fn parse_round_trip() {
+        for role in [UserRole::Owner, UserRole::Admin, UserRole::User] {
+            assert_eq!(UserRole::parse(role.as_str()).unwrap(), role);
+        }
+    }
+
+    #[test]
+    fn parse_rejects_unknown() {
+        assert!(UserRole::parse("god").is_err());
+        assert!(UserRole::parse("").is_err());
+    }
+}
+
 /// Bots a user controls, split by role.
 #[derive(Debug)]
 pub struct ControlledBots {

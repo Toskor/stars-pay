@@ -95,3 +95,49 @@ pub async fn sound_handler(Path(sound_name): Path<String>) -> AppResult<Response
             AppError::Internal("failed to build sound response".into())
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::sound_handler;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt;
+
+    fn router() -> Router {
+        Router::new().route("/sound/:sound_name", get(sound_handler))
+    }
+
+    async fn call(uri: &str) -> StatusCode {
+        let resp = router()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        resp.status()
+    }
+
+    #[tokio::test]
+    async fn rejects_parent_traversal() {
+        assert_eq!(
+            call("/sound/..%2Fetc%2Fpasswd").await,
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_backslash() {
+        assert_eq!(call("/sound/foo%5Cbar.mp3").await, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn missing_file_is_not_found() {
+        // Safe filename, but no such file on disk: handler should 404, not panic.
+        assert_eq!(
+            call("/sound/does_not_exist.mp3").await,
+            StatusCode::NOT_FOUND
+        );
+    }
+}

@@ -70,3 +70,64 @@ impl From<serde_json::Error> for AppError {
 }
 
 pub type AppResult<T> = std::result::Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+
+    async fn body_json(resp: Response) -> serde_json::Value {
+        let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn variants_map_to_http_statuses() {
+        let cases = [
+            (
+                AppError::NotFound("nope".into()),
+                StatusCode::NOT_FOUND,
+                "nope",
+            ),
+            (
+                AppError::Unauthorized("no token".into()),
+                StatusCode::UNAUTHORIZED,
+                "no token",
+            ),
+            (
+                AppError::Forbidden("owner only".into()),
+                StatusCode::FORBIDDEN,
+                "owner only",
+            ),
+            (
+                AppError::BadRequest("bad".into()),
+                StatusCode::BAD_REQUEST,
+                "bad",
+            ),
+            (
+                AppError::Internal("boom".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "boom",
+            ),
+        ];
+        for (err, expected_status, expected_msg) in cases {
+            let resp = err.into_response();
+            assert_eq!(resp.status(), expected_status);
+            let body = body_json(resp).await;
+            assert_eq!(body["error"], expected_msg);
+        }
+    }
+
+    #[test]
+    fn anyhow_error_becomes_bad_request() {
+        let err: AppError = anyhow::anyhow!("oops").into();
+        assert!(matches!(err, AppError::BadRequest(ref m) if m == "oops"));
+    }
+
+    #[test]
+    fn serde_error_becomes_bad_request() {
+        let serde_err = serde_json::from_str::<serde_json::Value>("{not json").unwrap_err();
+        let err: AppError = serde_err.into();
+        assert!(matches!(err, AppError::BadRequest(ref m) if m.starts_with("invalid json")));
+    }
+}

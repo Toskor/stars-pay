@@ -273,3 +273,34 @@ pub async fn send_message(
         Err(anyhow::anyhow!("{}", err.description))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numeric_id_parses_valid_token() {
+        let id = bot_numeric_id_from_token("123456789:ABCdef-ghi_jkl").unwrap();
+        assert_eq!(id, 123456789);
+    }
+
+    #[test]
+    fn numeric_id_rejects_missing_colon() {
+        assert!(bot_numeric_id_from_token("123456789ABCdef").is_err());
+    }
+
+    #[test]
+    fn numeric_id_rejects_non_numeric_prefix() {
+        assert!(bot_numeric_id_from_token("not_a_number:secret").is_err());
+    }
+
+    #[test]
+    fn numeric_id_rejects_extra_colons() {
+        assert!(bot_numeric_id_from_token("1:2:3").is_err());
+    }
+
+    #[test]
+    fn tg_api_url_is_well_formed() {
+        assert_eq!(get_tg_api_url("xxx"), "https://api.telegram.org/botxxx/");
+    }
+}
