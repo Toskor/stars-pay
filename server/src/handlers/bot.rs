@@ -476,7 +476,9 @@ pub async fn change_bot_token(
 
 pub async fn get_debt_invoice_url(
     State(state): State<Arc<AppState>>,
-    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::GetDebtInvoiceURLQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<
+        json::GetDebtInvoiceURLQueryParam,
+    >,
 ) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner && access.role != UserRole::Admin {
         return Err(AppError::Forbidden(
@@ -484,7 +486,9 @@ pub async fn get_debt_invoice_url(
         ));
     }
 
-    let invoice_url = state.generate_debt_invoice_url(payload.target_bot_id).await?;
+    let invoice_url = state
+        .generate_debt_invoice_url(payload.target_bot_id)
+        .await?;
     Ok(Json(serde_json::json!({"invoice_url": invoice_url})))
 }
 

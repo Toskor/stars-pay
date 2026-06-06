@@ -14,7 +14,9 @@ use super::auth::BotOwnerOrAdmin;
 /// Send a fake donation event for overlay testing.
 pub async fn make_test_donation(
     State(state): State<Arc<AppState>>,
-    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::MakeTestDonationQueryParam>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<
+        json::MakeTestDonationQueryParam,
+    >,
 ) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner && access.role != UserRole::Admin {
         return Err(AppError::Forbidden(
@@ -45,10 +47,9 @@ pub async fn update_goal_config(
     Json(payload): Json<json::GoalPropsQueryParam>,
 ) -> AppResult<Json<Value>> {
     tracing::debug!(bot_id = %bot.id, "update_goal_config");
-    let ws_token = state
-        .get_bot_ws_token(bot.id.clone())
-        .await
-        .map_err(|_| AppError::BadRequest("security check failure while getting bot ws token".into()))?;
+    let ws_token = state.get_bot_ws_token(bot.id.clone()).await.map_err(|_| {
+        AppError::BadRequest("security check failure while getting bot ws token".into())
+    })?;
 
     state
         .update_goal_config(payload.target_bot_id, &ws_token, payload.goal_config)
@@ -59,7 +60,9 @@ pub async fn update_goal_config(
 
 pub async fn refresh_layer_token(
     State(state): State<Arc<AppState>>,
-    BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::RefreshLayerTokenQueryParams>,
+    BotAccessWithPayload { access, payload }: BotAccessWithPayload<
+        json::RefreshLayerTokenQueryParams,
+    >,
 ) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner && access.role != UserRole::Admin {
         return Err(AppError::Forbidden(
@@ -67,7 +70,9 @@ pub async fn refresh_layer_token(
         ));
     }
 
-    state.refresh_layer_token(payload.target_bot_id.clone()).await?;
+    state
+        .refresh_layer_token(payload.target_bot_id.clone())
+        .await?;
     Ok(Json(serde_json::json!({"status": "success"})))
 }
 

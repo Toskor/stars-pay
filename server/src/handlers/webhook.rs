@@ -1,7 +1,5 @@
 use anyhow::Result;
-use axum::{
-    extract::{Json, Path, State},
-};
+use axum::extract::{Json, Path, State};
 use hyper::{HeaderMap, Uri};
 use serde_json::Value;
 use std::{str::FromStr, sync::Arc};
@@ -22,7 +20,14 @@ pub async fn webhook_handler(
     let (security_ok, token) = state
         .with_record(&bot_id, |bot| {
             let ok = auth::check_secret_token(&bot.secret_token, &headers);
-            (ok, if ok { bot.token.to_string() } else { String::new() })
+            (
+                ok,
+                if ok {
+                    bot.token.to_string()
+                } else {
+                    String::new()
+                },
+            )
         })
         .await?;
 

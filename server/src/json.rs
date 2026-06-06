@@ -343,38 +343,38 @@ pub struct GoalPropsQueryParam {
 //     title: "Donation Goal Title",
 //     maxLimit: 444,
 //     progress: 106,
-  
+
 //     // 1 elements settings
 //     titlePosition: "inside",
-  
+
 //     progressPosition: "inside",
 //     progressType: "cur_stars_w_percent",
-  
+
 //     displayLimits: false,
 //     minLimit: 0,
-  
+
 //     displayBackground: false,
-  
+
 //     isVertical: false,
-  
+
 //     // 2 progress bar design
 //     barHeight: 29,
 //     roundingRadius: 4,
 //     barStrokeThickness: 0.4,
 //     strokeColor: "rgba(255,0,0,0.91)",
-  
+
 //     // Background bar styling
 //     bgBarColor: {
 //       colorType: "solid",
 //       color: "#424242",
 //       },
-  
+
 //     // Progress bar styling
 //     progressBarColor: {
 //       colorType: "gradient",
 //       color: "linear-gradient(0deg, #f57507,rgb(255, 248, 235))",
 //       },
-  
+
 //     // 3 font settings
 //     titleFontSettings: {
 //       // 1 font
@@ -383,13 +383,13 @@ pub struct GoalPropsQueryParam {
 //       style: [TextStyle.BOLD],
 //       transformation: "uppercase",
 //       horizontalAlignment: "center",
-  
+
 //       // 2 text
 //       fontSize: 2.0,
 //       lineHeight: 1,
 //       letterSpacing: 0,
 //       wordSpacing: 0,
-  
+
 //       // 3 shadow
 //       shadowColor: "rgba(0, 0, 0, 0.24)",
 //       shadowOffsetX: 0.3,

@@ -117,10 +117,7 @@ async fn shutdown_signal() {
 
 fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
-        .route(
-            "/:bot_id/webhook",
-            post(handlers::webhook::webhook_handler),
-        )
+        .route("/:bot_id/webhook", post(handlers::webhook::webhook_handler))
         .route(
             "/:bot_id/avatar/:user_id",
             get(handlers::bot::avatar_url_handler),
