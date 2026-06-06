@@ -2,7 +2,7 @@ use anyhow::Result;
 use axum::{
     body::Body,
     extract::{Json, Multipart, Path, State},
-    response::{IntoResponse, Response},
+    response::Response,
 };
 use hyper::{header, StatusCode};
 use serde_json::Value;
@@ -12,6 +12,7 @@ use super::auth::{self, AuthenticatedUser, BotAccess, BotAccessWithPayload};
 use crate::{
     app_state::{AppState, ControlledBots, UserRole},
     db::DBBot,
+    error::{AppError, AppResult},
     http, json, tg_api,
 };
 
@@ -22,156 +23,97 @@ pub async fn add_bot(
     AuthenticatedUser { user }: AuthenticatedUser,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::AddBotQueryParam>,
-) -> impl IntoResponse {
-    let res = state.add_bot(&payload.bot_token, user.id).await;
-    match res {
-        Ok((bot_id, bot_name)) => {
-            let bot_data = json::TMABotData {
-                id: bot_id,
-                numeric_id: tg_api::bot_numeric_id_from_token(&payload.bot_token).unwrap_or(0),
-                name: bot_name,
-                avatar: None,
-                user_role: "owner".to_string(),
-                owner: json::TMAUserData {
-                    id: user.id,
-                    username: user.username.unwrap_or_default(),
-                    name: format!("{} {}", user.first_name, user.last_name),
-                    avatar_url: Some(user.photo_url),
-                },
-                admins: vec![],
-                suspended: None,
-                debt: None,
-                blocked: None,
-            };
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({"status": "success", "bot_data": bot_data})),
-            )
-        }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
-    }
+) -> AppResult<Json<Value>> {
+    let (bot_id, bot_name) = state.add_bot(&payload.bot_token, user.id).await?;
+
+    let bot_data = json::TMABotData {
+        id: bot_id,
+        numeric_id: tg_api::bot_numeric_id_from_token(&payload.bot_token).unwrap_or(0),
+        name: bot_name,
+        avatar: None,
+        user_role: "owner".to_string(),
+        owner: json::TMAUserData {
+            id: user.id,
+            username: user.username.unwrap_or_default(),
+            name: format!("{} {}", user.first_name, user.last_name),
+            avatar_url: Some(user.photo_url),
+        },
+        admins: vec![],
+        suspended: None,
+        debt: None,
+        blocked: None,
+    };
+
+    Ok(Json(
+        serde_json::json!({"status": "success", "bot_data": bot_data}),
+    ))
 }
 
 pub async fn add_bot_admin(
     State(state): State<Arc<AppState>>,
     BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::AddBotAdminQueryParam>,
-) -> impl IntoResponse {
+) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"error": "Only owner can add admin"})),
-        );
+        return Err(AppError::Forbidden("only owner can add admin".into()));
     }
 
-    let res = state
+    let admin_info = state
         .add_bot_admin(access.user.id, &payload.bot_id, payload.admin_id)
-        .await;
-    match res {
-        Ok(admin_info) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "success", "admin_info": admin_info})),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
-    }
+        .await?;
+
+    Ok(Json(
+        serde_json::json!({"status": "success", "admin_info": admin_info}),
+    ))
 }
 
 pub async fn remove_bot_admin(
     State(state): State<Arc<AppState>>,
     BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::RemoveBotAdminQueryParam>,
-) -> impl IntoResponse {
+) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"error": "Only owner can remove admin"})),
-        );
+        return Err(AppError::Forbidden("only owner can remove admin".into()));
     }
 
-    let res = state
+    state
         .remove_bot_admin(access.user.id, &payload.bot_id, payload.admin_id)
-        .await;
-    match res {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "success"})),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
-    }
+        .await?;
+
+    Ok(Json(serde_json::json!({"status": "success"})))
 }
 
 pub async fn config_handler(
     auth::BotOwnerOrAdmin { .. }: auth::BotOwnerOrAdmin,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::ConfigQueryParam>,
-) -> impl IntoResponse {
-    match state.get_app_config(payload.target_bot_id).await {
-        Ok(config) => match serde_json::from_str::<Value>(&config) {
-            Ok(json_config) => (StatusCode::OK, Json(json_config)),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to parse config: {}", e)})),
-            ),
-        },
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": format!("Failed to get config: {}", e)})),
-        ),
-    }
+) -> AppResult<Json<Value>> {
+    let config = state.get_app_config(payload.target_bot_id).await?;
+    let json_config: Value = serde_json::from_str(&config)
+        .map_err(|e| AppError::Internal(format!("failed to parse stored config: {}", e)))?;
+    Ok(Json(json_config))
 }
 
 pub async fn update_config(
     auth::BotOwnerOrAdmin { .. }: auth::BotOwnerOrAdmin,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::UpdateConfigQueryParam>,
-) -> impl IntoResponse {
-    let target_bot_token = match state.get_bot_token(payload.target_bot_id.to_string()).await {
-        Ok(token) => token,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Failed to get bot token: {}", e)})),
-            );
-        }
-    };
-    let Ok(mut tma_app_config) = serde_json::from_str::<json::TMAAppConfig>(&payload.app_config)
-    else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Invalid app config"})),
-        );
-    };
+) -> AppResult<Json<Value>> {
+    let target_bot_token = state
+        .get_bot_token(payload.target_bot_id.to_string())
+        .await?;
+
+    let mut tma_app_config: json::TMAAppConfig = serde_json::from_str(&payload.app_config)
+        .map_err(|_| AppError::BadRequest("invalid app config".into()))?;
 
     generate_invoice_urls(&mut tma_app_config, &target_bot_token).await;
 
-    let config_str = match serde_json::to_string(&tma_app_config) {
-        Ok(s) => s,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to serialize config: {}", e)})),
-            );
-        }
-    };
+    let config_str = serde_json::to_string(&tma_app_config)
+        .map_err(|e| AppError::Internal(format!("failed to serialize config: {}", e)))?;
 
-    let upd_res = state
+    state
         .update_bot_config(payload.target_bot_id, config_str)
-        .await;
+        .await?;
 
-    match upd_res {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": err.to_string()})),
-        ),
-    }
+    Ok(Json(serde_json::json!({"status": "ok"})))
 }
 
 async fn generate_invoice_urls(tma_app_config: &mut json::TMAAppConfig, token: &str) {
@@ -213,28 +155,15 @@ async fn generate_invoice_urls(tma_app_config: &mut json::TMAAppConfig, token: &
 pub async fn fetch_user_bots(
     AuthenticatedUser { user: web_app_user }: AuthenticatedUser,
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    match state.get_controlled_bots(web_app_user.id).await {
-        Ok(controlled_bots) => {
-            match convert_controlled_bots_to_json_value(
-                controlled_bots,
-                web_app_user,
-                state.config.max_stars_debt,
-            )
-            .await
-            {
-                Ok(json_value) => (StatusCode::OK, Json(json_value)),
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                ),
-            }
-        }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": format!("Failed to get controlled bots: {}", e)})),
-        ),
-    }
+) -> AppResult<Json<Value>> {
+    let controlled_bots = state.get_controlled_bots(web_app_user.id).await?;
+    let json_value = convert_controlled_bots_to_json_value(
+        controlled_bots,
+        web_app_user,
+        state.config.max_stars_debt,
+    )
+    .await?;
+    Ok(Json(json_value))
 }
 
 async fn convert_controlled_bots_to_json_value(
@@ -520,194 +449,92 @@ async fn process_admin_info(
 pub async fn remove_bot(
     State(state): State<Arc<AppState>>,
     BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::RemoveBotQueryParam>,
-) -> impl IntoResponse {
+) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"error": "Only owner can remove bot"})),
-        );
+        return Err(AppError::Forbidden("only owner can remove bot".into()));
     }
 
-    let res = state.remove_bot(access.user.id, payload.bot_id).await;
-    match res {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "success"})),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
-    }
+    state.remove_bot(access.user.id, payload.bot_id).await?;
+    Ok(Json(serde_json::json!({"status": "success"})))
 }
 
 pub async fn change_bot_token(
     State(state): State<Arc<AppState>>,
     BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::ChangeBotTokenQueryParam>,
-) -> impl IntoResponse {
+) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner && access.role != UserRole::Admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"error": "Only owner or admin can change bot token"})),
-        );
+        return Err(AppError::Forbidden(
+            "only owner or admin can change bot token".into(),
+        ));
     }
 
-    let res = state
+    state
         .change_bot_token(access.user.id, payload.bot_id, payload.new_token)
-        .await;
-
-    match res {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "success"})),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
-    }
+        .await?;
+    Ok(Json(serde_json::json!({"status": "success"})))
 }
 
-// #[axum::debug_handler]
 pub async fn get_debt_invoice_url(
     State(state): State<Arc<AppState>>,
     BotAccessWithPayload { access, payload }: BotAccessWithPayload<json::GetDebtInvoiceURLQueryParam>,
-) -> impl IntoResponse {
+) -> AppResult<Json<Value>> {
     if access.role != UserRole::Owner && access.role != UserRole::Admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"error": "Only owner or admin can get debt invoice URL"})),
-        );
+        return Err(AppError::Forbidden(
+            "only owner or admin can get debt invoice URL".into(),
+        ));
     }
 
-    let invoice_url = match state.generate_debt_invoice_url(payload.target_bot_id).await {
-        Ok(url) => url,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": e.to_string()})),
-            );
-        }
-    };
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({"invoice_url": invoice_url})),
-    )
+    let invoice_url = state.generate_debt_invoice_url(payload.target_bot_id).await?;
+    Ok(Json(serde_json::json!({"invoice_url": invoice_url})))
 }
 
-// #[axum::debug_handler]
-pub async fn create_invoice(
-    auth::BotOwnerOrAdmin { bot, .. }: auth::BotOwnerOrAdmin,
-    State(_state): State<Arc<AppState>>,
-    Json(payload): Json<json::CreateInvoiceQueryParam>,
-) -> impl IntoResponse {
-    match tg_api::create_invoice_link(&bot.token, &payload).await {
-        Ok(url) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"invoice_url": url})),
-        ),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        ),
-    }
-}
-
+/// Proxies a Telegram avatar so the bot token stays on the server.
 pub async fn avatar_url_handler(
-    auth::BotAccess { bot, .. }: auth::BotAccess,
+    BotAccess { bot, .. }: BotAccess,
     Path((_bot_id, user_id)): Path<(String, String)>,
     State(_state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    let token = bot.token.clone();
+) -> AppResult<Response> {
+    let user_id_parsed: u64 = user_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("invalid user id".into()))?;
 
-    let user_id_parsed = match user_id.parse::<u64>() {
-        Ok(id) => id,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "Invalid user ID"})),
-            )
-                .into_response();
-        }
-    };
+    let avatar_url = tg_api::get_avatar_url(&bot.token, user_id_parsed)
+        .await
+        .map_err(|e| AppError::Internal(format!("failed to get avatar url: {}", e)))?
+        .ok_or_else(|| AppError::NotFound("no avatar found for this user".into()))?;
 
-    let avatar_url_result = tg_api::get_avatar_url(&token, user_id_parsed).await;
+    let uri = hyper::Uri::from_str(&avatar_url)
+        .map_err(|_| AppError::BadRequest("invalid avatar URL format".into()))?;
 
-    match avatar_url_result {
-        Ok(Some(avatar_url)) => {
-            let uri = match hyper::Uri::from_str(&avatar_url) {
-                Ok(uri) => uri,
-                Err(_) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": "Invalid avatar URL format"})),
-                    )
-                        .into_response();
-                }
-            };
+    let response = http::get(&uri, None)
+        .await
+        .map_err(|e| AppError::Internal(format!("failed to download image: {}", e)))?;
 
-            // Download the image
-            match http::get(&uri, None).await {
-                Ok(response) => {
-                    if response.status != StatusCode::OK {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            Json(serde_json::json!({"error": "Failed to download avatar image"})),
-                        )
-                            .into_response();
-                    }
-
-                    // For Telegram avatar images, the content type is always image/jpeg
-                    let content_type = "image/jpeg";
-                    let image_data = response.to_bytes().to_vec();
-
-                    return Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, content_type)
-                        .body(Body::from(image_data))
-                        .map_err(|e| {
-                            tracing::error!(error = %e, "failed to build response");
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(serde_json::json!({"error": "Failed to build response"})),
-                            )
-                                .into_response()
-                        })
-                        .unwrap_or_else(|resp| resp);
-                }
-                Err(e) => {
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"error": format!("Failed to download image: {}", e)})),
-                    )
-                        .into_response();
-                }
-            }
-        }
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "No avatar found for this user"})),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to get avatar URL: {}", e)})),
-            )
-                .into_response();
-        }
+    if response.status != StatusCode::OK {
+        return Err(AppError::BadRequest(
+            "failed to download avatar image".into(),
+        ));
     }
+
+    let image_data = response.to_bytes().to_vec();
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "image/jpeg")
+        .body(Body::from(image_data))
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to build avatar response");
+            AppError::Internal("failed to build response".into())
+        })
 }
 
 pub async fn upload_image(
     AuthenticatedUser { .. }: AuthenticatedUser,
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
-) -> impl IntoResponse {
-    let mut image = Option::<Vec<u8>>::None;
-    let mut image_type = Option::<String>::None;
+) -> AppResult<Json<Value>> {
+    let mut image: Option<Vec<u8>> = None;
+    let mut image_type: Option<String> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let Some(name) = field.name() else {
@@ -725,20 +552,15 @@ pub async fn upload_image(
         }
     }
 
-    match (image, image_type) {
-        (Some(img), Some(img_type)) => match state.upload_image_to_s3(img, &img_type).await {
-            Ok(url) => {
-                tracing::debug!(url = %url, "uploaded image");
-                (StatusCode::OK, Json(serde_json::json!({"image_url": url})))
-            }
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to upload image: {}", e)})),
-            ),
-        },
-        _ => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Invalid upload image params"})),
-        ),
-    }
+    let (img, img_type) = image
+        .zip(image_type)
+        .ok_or_else(|| AppError::BadRequest("invalid upload image params".into()))?;
+
+    let url = state
+        .upload_image_to_s3(img, &img_type)
+        .await
+        .map_err(|e| AppError::Internal(format!("failed to upload image: {}", e)))?;
+
+    tracing::debug!(url = %url, "uploaded image");
+    Ok(Json(serde_json::json!({"image_url": url})))
 }

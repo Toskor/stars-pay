@@ -1,63 +1,44 @@
 use anyhow::Result;
 use axum::{
     extract::{Json, Path, State},
-    response::IntoResponse,
 };
-use hyper::{HeaderMap, StatusCode, Uri};
+use hyper::{HeaderMap, Uri};
 use serde_json::Value;
 use std::{str::FromStr, sync::Arc};
 
 use super::auth;
-use crate::{app_state::AppState, http, json, main_bot, tg_api};
+use crate::{
+    app_state::AppState,
+    error::{AppError, AppResult},
+    http, json, main_bot, tg_api,
+};
 
-// #[axum::debug_handler]
 pub async fn webhook_handler(
     headers: HeaderMap,
     Path(bot_id): Path<String>,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::Update>,
-) -> impl IntoResponse {
-    //todo bad to_string()
-    let res = state
+) -> AppResult<Json<Value>> {
+    let (security_ok, token) = state
         .with_record(&bot_id, |bot| {
-            //safety check
-            if !auth::check_secret_token(&bot.secret_token, &headers) {
-                return (false, "".to_string());
-            }
-
-            let token = bot.token.to_string();
-            (true, token)
+            let ok = auth::check_secret_token(&bot.secret_token, &headers);
+            (ok, if ok { bot.token.to_string() } else { String::new() })
         })
-        .await;
+        .await?;
 
-    let mut error: anyhow::Error = anyhow::anyhow!("Some error");
-
-    if let Ok((security_check_result, token)) = res {
-        //safety check
-        if !security_check_result {
-            tracing::warn!(bot_id = %bot_id, "failed webhook security check");
-            return (StatusCode::UNAUTHORIZED, Json(Value::Null));
-        }
-
-        //todo redo
-        if bot_id == state.config.main_bot_id {
-            tracing::debug!("main bot webhook received");
-            match main_bot::parse_update(&payload, &token, &state).await {
-                Ok(json) => return (StatusCode::OK, Json(json)),
-                Err(e) => error = e,
-            }
-        } else {
-            match parse_update(&payload, &token, &state, bot_id).await {
-                Ok(json) => return (StatusCode::OK, Json(json)),
-                Err(e) => error = e,
-            }
-        }
+    if !security_ok {
+        tracing::warn!(bot_id = %bot_id, "failed webhook security check");
+        return Err(AppError::Unauthorized("invalid secret token".into()));
     }
 
-    (
-        StatusCode::BAD_REQUEST,
-        Json(serde_json::json!({"error": error.to_string()})),
-    )
+    let result = if bot_id == state.config.main_bot_id {
+        tracing::debug!("main bot webhook received");
+        main_bot::parse_update(&payload, &token, &state).await?
+    } else {
+        parse_update(&payload, &token, &state, bot_id).await?
+    };
+
+    Ok(Json(result))
 }
 
 pub async fn parse_update(

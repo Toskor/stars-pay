@@ -11,6 +11,7 @@ use tokio::{self};
 pub mod app_state;
 pub mod config;
 pub mod db;
+pub mod error;
 mod handlers;
 mod http;
 pub mod json;

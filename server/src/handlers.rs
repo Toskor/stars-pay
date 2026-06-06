@@ -1,6 +1,5 @@
-
 use axum::{
-    extract::{Json, Path, Query, State},
+    extract::{Path, Query, State},
     response::{IntoResponse, Response},
 };
 use fastwebsockets::upgrade;
@@ -11,7 +10,9 @@ use tokio_util::io::ReaderStream;
 
 use crate::{
     app_state::get_bot_id_from_username,
-    json, ws_server::handle_client,
+    error::{AppError, AppResult},
+    json,
+    ws_server::handle_client,
     AppState,
 };
 
@@ -22,94 +23,55 @@ pub mod webhook;
 
 pub use layer::{get_bot_ws_token, make_test_donation, refresh_layer_token, update_goal_config};
 
-// #[axum::debug_handler]
 pub async fn ws_handler(
     ws: upgrade::IncomingUpgrade,
     Path(bot_username): Path<String>,
     Query(params): Query<json::WSConnectionParams>,
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+) -> AppResult<Response> {
     let bot_id = get_bot_id_from_username(&bot_username);
     let ws_token = params.ws_token;
 
-    let security_check = state
-        .with_record(&bot_id, |bot| {
-            if bot.ws_token == ws_token {
-                Some(())
-            } else {
-                None
-            }
-        })
-        .await;
+    let matched = state
+        .with_record(&bot_id, |bot| bot.ws_token == ws_token)
+        .await?;
 
-    match security_check {
-        Ok(Some(())) => match ws.upgrade() {
-            Ok((response, fut)) => {
-                tokio::task::spawn(async move {
-                    if let Err(e) = handle_client(fut, state.clone(), bot_id).await {
-                        tracing::warn!(error = %e, "ws connection error");
-                    }
-                });
-
-                response.into_response()
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to upgrade websocket");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "Failed to upgrade websocket connection"})),
-                )
-                    .into_response()
-            }
-        },
-        Ok(None) => {
-            tracing::warn!(bot_id = %bot_id, "ws token mismatch");
-            (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "Ws token mismatch"})),
-            )
-                .into_response()
-        }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-            .into_response(),
+    if !matched {
+        tracing::warn!(bot_id = %bot_id, "ws token mismatch");
+        return Err(AppError::BadRequest("ws token mismatch".into()));
     }
+
+    let (response, fut) = ws.upgrade().map_err(|e| {
+        tracing::warn!(error = %e, "failed to upgrade websocket");
+        AppError::Internal("failed to upgrade websocket".into())
+    })?;
+
+    tokio::task::spawn(async move {
+        if let Err(e) = handle_client(fut, state.clone(), bot_id).await {
+            tracing::warn!(error = %e, "ws connection error");
+        }
+    });
+
+    Ok(response.into_response())
 }
 
-//handle test cdn
-pub async fn sound_handler(Path(sound_name): Path<String>) -> impl IntoResponse {
+pub async fn sound_handler(Path(sound_name): Path<String>) -> AppResult<Response> {
     let sound_path = format!("server/src/sounds/{}", sound_name);
 
-    match File::open(sound_path).await {
-        Ok(file) => {
-            let stream = ReaderStream::new(file);
-            let body = axum::body::Body::from_stream(stream);
+    let file = File::open(sound_path).await.map_err(|e| {
+        tracing::warn!(error = %e, "failed to open sound file");
+        AppError::NotFound("sound file not found".into())
+    })?;
 
-            match Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "audio/mpeg")
-                .body(body)
-            {
-                Ok(response) => response.into_response(),
-                Err(e) => {
-                    tracing::error!(error = %e, "failed to build sound response");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"error": "Failed to build response"})),
-                    )
-                        .into_response()
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to open sound file");
-            (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "Sound file not found"})),
-            )
-                .into_response()
-        }
-    }
+    let stream = ReaderStream::new(file);
+    let body = axum::body::Body::from_stream(stream);
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "audio/mpeg")
+        .body(body)
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to build sound response");
+            AppError::Internal("failed to build sound response".into())
+        })
 }
