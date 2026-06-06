@@ -31,9 +31,11 @@ The Rust backend is the focus of this repository.
 - **lru** — bot record cache in front of SQLite
 - **hmac / sha2** — Telegram Mini App `initData` signature validation
 
-Frontend (`tma-client/`) is SvelteKit; it builds to static HTML embedded
-into the binary via `include_str!`. You don't need to rebuild it to run
-the server — the prebuilt `dist/` is checked in.
+Frontend (SvelteKit Mini App + overlay) lives on the [`frontend`](../../tree/frontend)
+branch. Its prebuilt HTML is checked into this branch under
+`server/static/` and embedded into the binary via `include_str!`, so the
+server runs as a single self-contained executable — no separate frontend
+process to start.
 
 ---
 
@@ -106,19 +108,22 @@ server/src/
 ├── http.rs           # outbound HTTP client + TLS + gzip
 ├── s3_api.rs         # Scaleway S3 client setup
 ├── main_bot.rs       # main control bot update handling
-└── json.rs           # request/response/WS payload types
+├── json.rs           # request/response/WS payload types
+└── static/           # prebuilt frontend HTML (embedded via include_str!)
 
-tma-client/           # SvelteKit Mini App + overlay (prebuilt in dist/)
 db/                   # SQLite file (auto-created)
 ```
+
+Frontend sources are on the `frontend` branch (not on `main`) to keep the
+default view focused on the Rust backend.
 
 ---
 
 ## Quick start
 
-Prerequisites: Rust stable, `bun` (only if you want to rebuild the frontend),
-a public HTTPS URL for Telegram to reach (ngrok works), an S3-compatible
-bucket (Scaleway is what this was built against; AWS S3 works too).
+Prerequisites: Rust stable, a public HTTPS URL for Telegram to reach
+(ngrok works), an S3-compatible bucket (Scaleway is what this was built
+against; AWS S3 works too).
 
 ```bash
 # 1. Copy the env template and fill in your secrets
@@ -127,9 +132,19 @@ $EDITOR .env
 
 # 2. Run the server (Mini App static files are already embedded)
 cargo run --manifest-path server/Cargo.toml
+```
 
-# Optional: rebuild the frontend if you change Svelte sources
-./build.sh
+### Rebuilding the frontend
+
+The Svelte sources are on the `frontend` branch. To regenerate the embedded
+HTML:
+
+```bash
+git checkout frontend
+./build.sh                                    # bun run build × 5 targets
+cp tma-client/dist/src/pages/*.html /tmp/
+git checkout main
+cp /tmp/*.html server/static/
 ```
 
 Set `RUST_LOG=info,tg_stars=debug` (already the default if unset) to see

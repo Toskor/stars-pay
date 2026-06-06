@@ -23,12 +23,13 @@ pub mod s3_api;
 mod tg_api;
 pub mod ws_server;
 
-const HTML_MINI_APP: &str = include_str!("../../tma-client/dist/src/pages/mini_app.html");
-const HTML_MAIN_BOT_MINI_APP: &str =
-    include_str!("../../tma-client/dist/src/pages/main_bot_mini_app.html");
-const HTML_LAYER: &str = include_str!("../../tma-client/dist/src/pages/layer.html");
-const HTML_BLOCKED_APP: &str = include_str!("../../tma-client/dist/src/pages/blocked_app.html");
-const HTML_GOAL_APP: &str = include_str!("../../tma-client/dist/src/pages/goal_app.html");
+// Prebuilt frontend assets. The Svelte sources live on the `frontend` branch;
+// see README for how to rebuild and refresh these files.
+const HTML_MINI_APP: &str = include_str!("../static/mini_app.html");
+const HTML_MAIN_BOT_MINI_APP: &str = include_str!("../static/main_bot_mini_app.html");
+const HTML_LAYER: &str = include_str!("../static/layer.html");
+const HTML_BLOCKED_APP: &str = include_str!("../static/blocked_app.html");
+const HTML_GOAL_APP: &str = include_str!("../static/goal_app.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
 
