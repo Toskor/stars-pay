@@ -150,8 +150,6 @@ impl FromRequestParts<Arc<AppState>> for BotAccess {
 /// Bot access that requires owner or admin role
 #[derive(Debug, Clone)]
 pub struct BotOwnerOrAdmin {
-    pub user: json::WebAppUser,
-    pub role: crate::app_state::UserRole,
     pub bot: crate::db::DBBot,
 }
 
@@ -168,8 +166,6 @@ impl FromRequestParts<Arc<AppState>> for BotOwnerOrAdmin {
         match bot_access.role {
             crate::app_state::UserRole::Owner | crate::app_state::UserRole::Admin => {
                 Ok(BotOwnerOrAdmin {
-                    user: bot_access.user,
-                    role: bot_access.role,
                     bot: bot_access.bot,
                 })
             }

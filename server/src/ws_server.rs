@@ -99,7 +99,6 @@ pub async fn handle_client(
                         let _ = ws.write_frame(close_frame).await;
                         break;
                     }
-                    _ => {}
                 }
             }
             _ = sleep(Duration::from_secs(4)) => {

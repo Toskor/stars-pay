@@ -262,7 +262,7 @@ pub struct DonationButton {
 #[derive(Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum WSEvent {
-    Success(WSEventSuccess),
+    Success(Box<WSEventSuccess>),
     Error { ok: bool, error: String },
 }
 
@@ -284,7 +284,7 @@ pub enum WSEventData {
         message: String,
     },
     GoalProps {
-        props: GoalProps,
+        props: Box<GoalProps>,
     },
 }
 
@@ -548,10 +548,10 @@ mod tests {
 
     #[test]
     fn test_ws_event() {
-        let event = serde_json::to_string(&WSEvent::Success(WSEventSuccess {
+        let event = serde_json::to_string(&WSEvent::Success(Box::new(WSEventSuccess {
             ok: true,
             data: WSEventData::GoalProps {
-                props: GoalProps {
+                props: Box::new(GoalProps {
                     url: "https://example.com".to_string(),
                     title: "Test Goal".to_string(),
                     max_limit: 100,
@@ -620,9 +620,10 @@ mod tests {
                         shadow_offset_y: None,
                         shadow_blur: None,
                     },
-                },
+                }),
             },
-        })).unwrap();
+        })))
+        .unwrap();
 
         println!("event: {}", event);
     }

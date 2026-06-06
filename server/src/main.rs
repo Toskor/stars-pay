@@ -1,6 +1,8 @@
 //! tg-stars server: Axum HTTP API + WebSocket fan-out for the Telegram
 //! Stars donation service. See `README.md` for the high-level architecture.
 
+#![forbid(unsafe_code)]
+
 use app_state::AppState;
 use axum::{
     routing::{get, post},
@@ -8,8 +10,7 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 
-use std::sync::Arc;
-use tokio::{self};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 pub mod app_state;
 pub mod config;
@@ -32,9 +33,10 @@ const HTML_BLOCKED_APP: &str = include_str!("../static/blocked_app.html");
 const HTML_GOAL_APP: &str = include_str!("../static/goal_app.html");
 
 const WEBHOOK_ALLOWED_UPDATES: &str = "[%22message%22,%22pre_checkout_query%22]";
+const DEBT_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -42,22 +44,79 @@ async fn main() {
         )
         .init();
 
-    let config = match config::Config::from_env() {
-        Ok(config) => config,
-        Err(e) => {
-            tracing::error!(error = %e, "failed to load configuration; check .env or env vars");
-            std::process::exit(1);
-        }
-    };
-    let port = config.port.clone();
-    let app_state = AppState::new(config).await;
-    let arc_app_state = Arc::new(app_state);
-    if let Err(e) = arc_app_state.prepare().await {
-        tracing::error!(error = %e, "failed to prepare application state");
-        std::process::exit(1);
-    }
+    let config = config::Config::from_env().map_err(|e| {
+        tracing::error!(error = %e, "failed to load configuration; check .env or env vars");
+        e
+    })?;
 
-    let router = Router::new()
+    let port = config.port;
+    let cors = build_cors_layer(&config.cors_origin)?;
+
+    let app_state = Arc::new(AppState::new(config).await?);
+    app_state.prepare().await?;
+
+    let router = build_router(app_state.clone()).layer(cors);
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+        tracing::error!(%addr, error = %e, "failed to bind tcp listener");
+        e
+    })?;
+    tracing::info!(%addr, "axum server listening");
+
+    // Background loop: walk every bot, suspend or notify on debt thresholds.
+    let debt_task = tokio::spawn({
+        let app_state = app_state.clone();
+        async move {
+            let mut ticker = tokio::time::interval(DEBT_CHECK_INTERVAL);
+            // Avoid a burst of catch-up ticks if we're behind schedule.
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                ticker.tick().await;
+                if let Err(e) = app_state.process_bots_debt_status().await {
+                    tracing::error!(error = %e, "error processing bots debt status");
+                }
+            }
+        }
+    });
+
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("server shut down, aborting background tasks");
+    debt_task.abort();
+
+    Ok(())
+}
+
+/// Wait for SIGINT (Ctrl+C) or SIGTERM (systemd `stop`, container stop).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("Ctrl+C received"),
+        _ = terminate => tracing::info!("SIGTERM received"),
+    }
+}
+
+fn build_router(state: Arc<AppState>) -> Router {
+    Router::new()
         .route(
             "/:bot_id/webhook",
             post(handlers::webhook::webhook_handler),
@@ -68,13 +127,12 @@ async fn main() {
         )
         .route("/:bot_id/config", post(handlers::bot::config_handler))
         .route("/:bot_id/updateConfig", post(handlers::bot::update_config))
-        // goal routes
         .route(
             "/:bot_id/updateGoalConfig",
             post(handlers::update_goal_config),
         )
         .route("/:bot_id/ws_token", get(handlers::get_bot_ws_token))
-        //main bot routes
+        // main control bot routes
         .route(
             "/stardonationservice/controlledBots",
             get(handlers::bot::fetch_user_bots),
@@ -88,7 +146,10 @@ async fn main() {
             "/stardonationservice/removeBotAdmin",
             post(handlers::bot::remove_bot_admin),
         )
-        .route("/stardonationservice/removeBot", post(handlers::bot::remove_bot))
+        .route(
+            "/stardonationservice/removeBot",
+            post(handlers::bot::remove_bot),
+        )
         .route(
             "/stardonationservice/changeBotToken",
             post(handlers::bot::change_bot_token),
@@ -110,87 +171,22 @@ async fn main() {
             post(handlers::bot::upload_image),
         )
         .route("/sound/:sound_name", get(handlers::sound_handler))
-        // ws server
-        // exmple url: wss://host/ws/bot_username?ws_token=1234567890
+        // ws example: wss://host/ws/<bot_username>?ws_token=...
         .route("/ws/:bot_username", get(handlers::ws_handler))
-        .with_state(arc_app_state.clone())
-        .layer(cors_layer());
-
-    let _axum_task = tokio::spawn(async move {
-        let listener = match tokio::net::TcpListener::bind(format!("localhost:{}", port)).await {
-            Ok(listener) => listener,
-            Err(e) => {
-                tracing::error!(port = %port, error = %e, "failed to bind tcp listener");
-                return;
-            }
-        };
-        tracing::info!(?listener, "axum server listening");
-
-        if let Err(e) = axum::serve(listener, router).await {
-            tracing::error!(error = %e, "axum server crashed");
-        }
-    });
-
-    let _task_for_proccess_bots_debt = tokio::spawn({
-        let app_state = arc_app_state.clone();
-        async move {
-            loop {
-                if let Err(e) = app_state.process_bots_debt_status().await {
-                    tracing::error!(error = %e, "error processing bots debt status");
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 24)).await;
-            }
-        }
-    });
-
-    tokio::signal::ctrl_c().await.unwrap();
+        .with_state(state)
 }
 
-fn cors_layer() -> CorsLayer {
-    CorsLayer::new()
-        // .allow_origin(Any)
-        .allow_origin(
-            "https://tg-stars.s3-website.nl-ams.scw.cloud"
-                .parse::<axum::http::HeaderValue>()
-                .unwrap(),
-        )
-        // .allow_methods(Any)
+fn build_cors_layer(origin: &str) -> anyhow::Result<CorsLayer> {
+    let origin = origin
+        .parse::<axum::http::HeaderValue>()
+        .map_err(|e| anyhow::anyhow!("invalid CORS_ORIGIN {origin:?}: {e}"))?;
+    Ok(CorsLayer::new()
+        .allow_origin(origin)
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,
             axum::http::Method::OPTIONS,
         ])
-        //todo mb make more strict
         .allow_headers(Any)
-        .allow_credentials(false)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::Value;
-
-    #[test]
-    fn value_size() {
-        let size_of_null = std::mem::size_of::<Value>();
-        println!("Size of Value::Null: {} bytes", size_of_null);
-    }
-
-    #[tokio::test]
-    async fn upd_mini_app_source() {
-        let config = config::Config::from_env().unwrap();
-        let app_state = AppState::new(config).await;
-        app_state
-            .update_mini_app_source("star_donation".to_string(), false)
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn get_controlled_bots() {
-        let config = config::Config::from_env().unwrap();
-        let app_state = AppState::new(config).await;
-        let controlled_bots = app_state.get_controlled_bots(348135868).await.unwrap();
-        println!("{:?}", controlled_bots);
-    }
+        .allow_credentials(false))
 }

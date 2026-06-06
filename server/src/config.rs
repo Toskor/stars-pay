@@ -14,6 +14,8 @@ pub struct Config {
     pub domain: String,
     pub ws_domain: String,
     pub port: u16,
+    /// Allowed CORS origin (the static frontend host).
+    pub cors_origin: String,
 
     // Database
     pub db_path: String,
@@ -60,10 +62,16 @@ impl Config {
         let ws_domain = std::env::var("WS_DOMAIN")
             .map_err(|_| anyhow!("WS_DOMAIN environment variable is required"))?;
         let port = std::env::var("PORT")?.parse()?;
+        let cors_origin = std::env::var("CORS_ORIGIN")
+            .map_err(|_| anyhow!("CORS_ORIGIN environment variable is required"))?;
 
         // Database
-        let db_path =
-            std::env::var("DB_PATH").unwrap_or_else(|_| "db/bots_data_base.sqlite".to_string());
+        let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| {
+            std::path::PathBuf::from("db")
+                .join("bots_data_base.sqlite")
+                .to_string_lossy()
+                .into_owned()
+        });
 
         // S3 Configuration
         let s3_bucket_name = std::env::var("S3_BUCKET_NAME")
@@ -80,12 +88,19 @@ impl Config {
             .map_err(|_| anyhow!("S3_ENDPOINT_URL environment variable is required"))?;
 
         // Application Settings
-        let cache_size = std::env::var("CACHE_SIZE")?
-            .parse()
+        const DEFAULT_CACHE_SIZE: NonZeroUsize = match NonZeroUsize::new(100) {
+            Some(n) => n,
+            None => unreachable!(),
+        };
+        let cache_size = std::env::var("CACHE_SIZE")
             .ok()
+            .and_then(|s| s.parse().ok())
             .and_then(NonZeroUsize::new)
-            .unwrap_or_else(|| unsafe { NonZeroUsize::new_unchecked(100) });
-        let room_capacity = std::env::var("ROOM_CAPACITY")?.parse().unwrap_or(10);
+            .unwrap_or(DEFAULT_CACHE_SIZE);
+        let room_capacity = std::env::var("ROOM_CAPACITY")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
         let max_stars_debt = std::env::var("MAX_STARS_DEBT")
             .map_err(|_| anyhow!("MAX_STARS_DEBT environment variable is required"))?
             .parse()?;
@@ -106,6 +121,7 @@ impl Config {
             domain,
             ws_domain,
             port,
+            cors_origin,
             db_path,
             s3_bucket_name,
             s3_website,

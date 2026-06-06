@@ -25,7 +25,7 @@ pub enum UserRole {
 }
 
 impl UserRole {
-    pub fn from_str(role: &str) -> Result<Self> {
+    pub fn parse(role: &str) -> Result<Self> {
         match role {
             "owner" => Ok(UserRole::Owner),
             "admin" => Ok(UserRole::Admin),
@@ -34,7 +34,7 @@ impl UserRole {
         }
     }
 
-    pub fn to_str(&self) -> &str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             UserRole::Owner => "owner",
             UserRole::Admin => "admin",
@@ -61,105 +61,34 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new(config: Config) -> Self {
+    pub async fn new(config: Config) -> Result<Self> {
         let db = DataBase::new_sql_lite(&config.db_path)
             .await
-            .unwrap_or_else(|e| {
-                panic!("Failed to create database at {}: {}", config.db_path, e);
-            });
+            .map_err(|e| anyhow::anyhow!("failed to open database at {}: {}", config.db_path, e))?;
 
         let cache = Mutex::new(LruCache::new(config.cache_size));
         let rooms = RwLock::new(HashMap::new());
 
         let s3_client = s3_api::s3_client(&config).await;
 
-        Self {
+        Ok(Self {
             cache,
             db,
             rooms,
             s3_client,
-            config: config,
-        }
+            config,
+        })
     }
 
+    /// Startup hook. Uploads the main bot's mini-app HTML to S3 if the bot is
+    /// registered; per-bot assets are uploaded lazily when a bot is added.
     pub async fn prepare(&self) -> Result<()> {
-        //todo add main bot in db
-
-        // //main bot
-        // match self.add_mainbot().await {
-        //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error1: {}", e),
-        // }
-
-        // //second_test_1
-        // match self
-        //     .add_bot("8090667304:AAFDIkQ7htfPHAjm2Vnzrl5JH6oELo4Y1e4", 348135868)
-        //     .await
-        // {
-        //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error: {}", e),
-        // }
-        // match self.add_bot_admin(348135868, "second_test_1", 487373).await {
-        //     Ok(_) => println!("Bot admin added"),
-        //     Err(e) => println!("Error: {}", e),
-        // }
-
-        //star_donation
-        // match self
-        //     .add_bot("7792542554:AAEVkmVbOKN3ouDPJORrfNZIX2j4uMlEZHs", 348135868)
-        //     .await
-        // {
-        //     Ok(_) => println!("Bot added"),
-        //     Err(e) => println!("Error: {}", e),
-        // }
-        // match self.add_bot_admin(348135868, "star_donation", 487373).await {
-        //     Ok(_) => println!("Bot admin added"),
-        //     Err(e) => println!("Error: {}", e),
-        // }
-
-        self.update_mini_app_source(self.config.main_bot_id.clone(), false)
-            .await
-            .unwrap();
-
-        self.update_mini_app_source("second_test_1".to_string(), true)
-            .await
-            .unwrap();
-
-        //without main bot
-        // self.update_mini_app_sources().await.unwrap();
-
-        let ws_token = self
-            .get_bot_ws_token("star_donation".to_string())
-            .await
-            .unwrap();
-        self.update_layer_source_s3(
-            "star_donation".to_string(),
-            &ws_token,
-            &self
-                .generate_ws_url_with_token("star_donation", &ws_token)
-                .await
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-        //test goal
-        let goal_config = self
-            .get_goal_config("star_donation".to_string())
-            .await
-            .unwrap();
-        self.update_goal_source_s3(
-            "star_donation",
-            &ws_token,
-            &self
-                .generate_ws_url_with_token("star_donation", &ws_token)
-                .await
-                .unwrap(),
-            &goal_config,
-        )
-        .await
-        .unwrap();
-
+        let main_bot_id = self.config.main_bot_id.clone();
+        if self.db.contains_bot(main_bot_id.clone()).await? {
+            if let Err(e) = self.update_mini_app_source(main_bot_id, false).await {
+                tracing::warn!(error = %e, "failed to refresh main bot mini app source");
+            }
+        }
         Ok(())
     }
 
@@ -272,40 +201,6 @@ impl AppState {
             .await?;
 
         Ok((bot_id.to_string(), bot_info.username))
-    }
-
-    async fn add_mainbot(&self) -> Result<()> {
-        if self
-            .db
-            .contains_bot(self.config.main_bot_id.clone())
-            .await?
-        {
-            return Err(anyhow::anyhow!(
-                "Main bot StarDonationService already exists"
-            ));
-        }
-        // let api_url = format!("{}{}/", self.config.domain, self.config.main_bot_id);
-        // let tg_api_url = format!("https://api.telegram.org/bot{}/", self.config.main_bot_token);
-
-        // let webhook_url = format!("{api_url}webhook");
-        let secret_token = tg_api::generate_secret_token();
-        // api::set_tg_webhook(&tg_api_url, &webhook_url, &secret_token).await?;
-
-        let ws_token = tg_api::generate_layer_token();
-
-        let bot: DBBot = DBBot::new(
-            self.config.main_bot_id.clone(),
-            self.config.main_bot_token.clone(),
-            secret_token,
-            ws_token,
-            self.config.main_bot_owner,
-            self.config.main_bot_admins.clone(),
-            false,
-        );
-        self.db
-            .insert_bot(bot, "".to_string(), "".to_string())
-            .await?;
-        Ok(())
     }
 
     ///without app_config
@@ -495,7 +390,7 @@ impl AppState {
         }
         let s3_path = format!("apps/{bot_id}/index.html");
 
-        let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, &app_config);
+        let html = HTML_MINI_APP.replace(r#"{"json_to_replace":""}"#, app_config);
 
         self.put_file_to_s3(html.as_bytes().to_vec(), "text/html", &s3_path)
             .await?;
@@ -516,10 +411,12 @@ impl AppState {
         self.update_goal_source_s3(&bot_id, ws_token, &ws_url, &goal_config_str)
             .await?;
 
-        let event = json::WSEvent::Success(json::WSEventSuccess {
+        let event = json::WSEvent::Success(Box::new(json::WSEventSuccess {
             ok: true,
-            data: json::WSEventData::GoalProps { props: goal_config },
-        });
+            data: json::WSEventData::GoalProps {
+                props: Box::new(goal_config),
+            },
+        }));
         self.send_event_to_room_members(&bot_id, event).await?;
 
         self.db.update_goal_config(bot_id, goal_config_str).await?;
@@ -571,7 +468,7 @@ impl AppState {
         admin_id: u64,
     ) -> Result<json::TMAUserData> {
         let is_owner = self
-            .with_record(&bot_id, |db_bot| {
+            .with_record(bot_id, |db_bot| {
                 if db_bot.admins.contains(&user_id) {
                     return Err(anyhow::anyhow!("User is already admin"));
                 }
@@ -610,7 +507,7 @@ impl AppState {
 
     pub async fn remove_bot_admin(&self, user_id: u64, bot_id: &str, admin_id: u64) -> Result<()> {
         let role = self
-            .with_record(&bot_id, |db_bot| {
+            .with_record(bot_id, |db_bot| {
                 if admin_id == db_bot.owner {
                     return Err(anyhow::anyhow!("Cant remove owner"));
                 }
@@ -623,7 +520,7 @@ impl AppState {
                     return Ok("admin");
                 }
                 // return Ok(UserRole::User);
-                return Ok("user");
+                Ok("user")
             })
             .await??;
 

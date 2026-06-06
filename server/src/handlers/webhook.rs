@@ -63,7 +63,7 @@ pub async fn parse_update(
                 // example {"ok":true,"result":true}
                 // println!("answerPreCheckoutQuery res: {}", res.to_str().unwrap());
 
-                let ws_donation_event = json::WSEvent::Success(json::WSEventSuccess {
+                let ws_donation_event = json::WSEvent::Success(Box::new(json::WSEventSuccess {
                     ok: true,
                     data: json::WSEventData::Donation {
                         from: pre_checkout_query.from.username.clone(),
@@ -71,7 +71,7 @@ pub async fn parse_update(
                         invoice_payload: pre_checkout_query.invoice_payload.clone(),
                         message: "some message".to_string(),
                     },
-                });
+                }));
 
                 let state_c = state.clone();
                 let bot_id_c = bot_id.clone();
@@ -88,16 +88,16 @@ pub async fn parse_update(
             }
         }
         json::UpdateData::Message(message) => {
-            let is_command = message.entities.as_ref().map_or(false, |entities| {
+            let is_command = message.entities.as_ref().is_some_and(|entities| {
                 entities
                     .iter()
                     .any(|entity| entity.entity_type == "bot_command")
             });
 
             let ans_text = if is_command {
-                parse_bot_command(&message, state, &bot_id).await?
+                parse_bot_command(message, state, &bot_id).await?
             } else {
-                parse_message(&message, state, &bot_id).await?
+                parse_message(message, state, &bot_id).await?
             };
 
             if let Some(chat) = message.chat.as_ref() {
@@ -139,15 +139,11 @@ async fn parse_bot_command(
     bot_id: &str,
 ) -> Result<String> {
     //find first command that has type bot_command
-    let command = message
-        .entities
-        .as_ref()
-        .and_then(|entities| {
-            entities
-                .iter()
-                .find(|entity| entity.entity_type == "bot_command")
-        })
-        .map(|entity| entity);
+    let command = message.entities.as_ref().and_then(|entities| {
+        entities
+            .iter()
+            .find(|entity| entity.entity_type == "bot_command")
+    });
 
     if let Some(command) = command {
         let Some(text) = message.text.as_ref() else {

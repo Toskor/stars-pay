@@ -22,7 +22,7 @@ pub async fn make_test_donation(
         ));
     }
 
-    let ws_donation_event = json::WSEvent::Success(json::WSEventSuccess {
+    let ws_donation_event = json::WSEvent::Success(Box::new(json::WSEventSuccess {
         ok: true,
         data: json::WSEventData::Donation {
             from: "Test User".to_string(),
@@ -30,7 +30,7 @@ pub async fn make_test_donation(
             invoice_payload: payload.media_source.clone(),
             message: "Its just test donation".to_string(),
         },
-    });
+    }));
 
     state
         .send_event_to_room_members(&payload.target_bot_id, ws_donation_event)

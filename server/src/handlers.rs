@@ -8,7 +8,7 @@ use axum::{
 };
 use fastwebsockets::upgrade;
 use hyper::{header, StatusCode};
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
@@ -60,10 +60,26 @@ pub async fn ws_handler(
 }
 
 pub async fn sound_handler(Path(sound_name): Path<String>) -> AppResult<Response> {
-    let sound_path = format!("server/src/sounds/{}", sound_name);
+    // Reject anything that isn't a simple filename to block path traversal.
+    if sound_name.is_empty()
+        || sound_name.contains('/')
+        || sound_name.contains('\\')
+        || sound_name.contains("..")
+    {
+        return Err(AppError::BadRequest("invalid sound name".into()));
+    }
 
-    let file = File::open(sound_path).await.map_err(|e| {
-        tracing::warn!(error = %e, "failed to open sound file");
+    let sound_path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "src",
+        "sounds",
+        sound_name.as_str(),
+    ]
+    .iter()
+    .collect();
+
+    let file = File::open(&sound_path).await.map_err(|e| {
+        tracing::warn!(path = %sound_path.display(), error = %e, "failed to open sound file");
         AppError::NotFound("sound file not found".into())
     })?;
 

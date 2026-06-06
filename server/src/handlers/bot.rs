@@ -427,19 +427,19 @@ async fn process_admin_info(
     }
 
     for admin_future in admin_futures {
-        if let Ok((admin_id, admin_info)) = admin_future.await {
-            if let Ok(admin) = admin_info {
-                if admin.ok {
-                    if let Some(result) = admin.result {
-                        admins.push(json::TMAUserData {
-                            id: admin_id,
-                            name: format!("{} {}", result.first_name, result.last_name),
-                            username: result.username,
-                            avatar_url: None,
-                        });
-                    }
-                }
-            }
+        let Ok((admin_id, Ok(admin))) = admin_future.await else {
+            continue;
+        };
+        if !admin.ok {
+            continue;
+        }
+        if let Some(result) = admin.result {
+            admins.push(json::TMAUserData {
+                id: admin_id,
+                name: format!("{} {}", result.first_name, result.last_name),
+                username: result.username,
+                avatar_url: None,
+            });
         }
     }
 

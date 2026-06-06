@@ -46,20 +46,6 @@ pub async fn set_tg_webhook(token: &str, webhook_url: &str, secret_token: &str) 
     }
 }
 
-pub async fn get_webhook_info(tg_api_url: &str) -> Result<()> {
-    let uri = hyper::Uri::from_str(&format!("{}getWebhookInfo", tg_api_url)).unwrap();
-
-    let res = http::get(&uri, None).await?;
-
-    if res.status != StatusCode::OK {
-        tracing::warn!(status = %res.status, "getWebhookInfo bad status");
-    } else {
-        tracing::debug!(body = %res.to_str().unwrap_or(""), "getWebhookInfo ok");
-    }
-
-    Ok(())
-}
-
 ///has delayed effect (5 min) after success call
 pub async fn set_bot_commands(token: &str, commands: &Vec<json::BotCommand>) -> Result<()> {
     // mb add language_code
@@ -93,7 +79,7 @@ pub async fn create_invoice_link(
 ) -> Result<String> {
     //todo add photo_url URL of the product photo for the invoice. Can be a photo of the goods or a marketing image for a service.
     //the picture that user pick to show on stream
-    let tg_api_url = get_tg_api_url(&token);
+    let tg_api_url = get_tg_api_url(token);
 
     let description = if params.description.is_empty() {
         params.title.to_string()
@@ -129,10 +115,10 @@ pub async fn create_invoice_link(
         let err: json::Error = res.to_json()?;
         tracing::warn!(status = %res.status, error = %err.description, "createInvoiceLink bad status");
 
-        return Err(anyhow::anyhow!(err.description));
+        Err(anyhow::anyhow!(err.description))
     } else {
         let res_body: json::CreateInvoiceAnswer = res.to_json()?;
-        return Ok(res_body.result);
+        Ok(res_body.result)
     }
 }
 

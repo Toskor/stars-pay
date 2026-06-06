@@ -101,10 +101,6 @@ pub async fn parse_update(
                 // println!("answerPreCheckoutQuery res: {}", _res.to_str().unwrap());
             }
         }
-        _ => {
-            tracing::debug!("unsupported update by main bot");
-            return Err(anyhow::anyhow!("Unsuported update by MainBot"));
-        }
     }
     Ok(Value::Null)
 }
