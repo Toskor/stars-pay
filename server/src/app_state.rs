@@ -2,20 +2,17 @@ use anyhow::Result;
 
 use aws_sdk_s3::Client;
 use lru::LruCache;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     config::Config,
     db::{self, BotStore, DBBot},
-    json, s3_api, tg_api, HTML_BLOCKED_APP, HTML_GOAL_APP, HTML_LAYER, HTML_MAIN_BOT_MINI_APP,
+    json,
+    rooms::RoomRegistry,
+    s3_api, tg_api, HTML_BLOCKED_APP, HTML_GOAL_APP, HTML_LAYER, HTML_MAIN_BOT_MINI_APP,
     HTML_MINI_APP,
 };
-
-/// WebSocket fan-out rooms keyed by bot id. Each room broadcasts donation
-/// events to all overlays connected for that streamer.
-pub type Rooms = HashMap<String, broadcast::Sender<json::RoomMessage>>;
 
 /// Caller's relationship to a bot, decided by webhook/auth extractors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +71,7 @@ pub struct ControlledBots {
 pub struct AppState {
     pub cache: Mutex<LruCache<String, DBBot>>,
     pub db: Arc<dyn BotStore>,
-    pub rooms: RwLock<Rooms>,
+    pub rooms: RoomRegistry,
     pub s3_client: Client,
     pub rate_limiter: Arc<dyn crate::ratelimit::RateLimiter>,
     pub config: Config,
@@ -86,7 +83,7 @@ impl AppState {
         let rate_limiter = crate::ratelimit::build(&config)?;
 
         let cache = Mutex::new(LruCache::new(config.cache_size));
-        let rooms = RwLock::new(HashMap::new());
+        let rooms = RoomRegistry::new(config.room_capacity);
 
         let s3_client = s3_api::s3_client(&config).await;
 
@@ -601,11 +598,12 @@ impl AppState {
             .update_bot_layer_token(bot_id.to_string(), new_layer_token)
             .await?;
 
-        let rooms = self.rooms.read().await;
-        if let Some(tx) = rooms.get(&bot_id) {
-            if let Err(e) = tx.send(json::RoomMessage::CloseRoom(bot_id.to_string())) {
-                tracing::warn!(bot_id = %bot_id, error = %e, "failed to send close-room message");
-            }
+        if let Err(e) = self
+            .rooms
+            .send(&bot_id, json::RoomMessage::CloseRoom(bot_id.to_string()))
+            .await
+        {
+            tracing::warn!(bot_id = %bot_id, error = %e, "failed to send close-room message");
         }
 
         Ok(())

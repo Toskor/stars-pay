@@ -1,11 +1,10 @@
 //! WebSocket overlay server: streamers' OBS browser sources subscribe to a
 //! per-bot room and receive donation events in real time.
 
-pub use anyhow::{anyhow, Result};
+pub use anyhow::Result;
 
 use fastwebsockets::{upgrade, Frame, OpCode, Payload, WebSocketError};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 
 use crate::{app_state::AppState, json};
@@ -24,8 +23,8 @@ pub async fn handle_client(
 ) -> Result<(), WebSocketError> {
     let cid = get_next_client_id();
 
-    let (room_tx, room_members_count) = match app_state.get_or_create_room(&bot_id).await {
-        Ok(result) => result,
+    let membership = match app_state.rooms.join(&bot_id).await {
+        Ok(membership) => membership,
         Err(e) => {
             tracing::warn!(bot_id = %bot_id, error = %e, "error joining room");
 
@@ -43,17 +42,18 @@ pub async fn handle_client(
         }
     };
 
-    let mut room_rx = room_tx.subscribe();
-    tracing::info!(
-        cid,
-        bot_id = %bot_id,
-        room_size = room_members_count + 1,
-        "ws client connected"
-    );
+    let mut room_rx = membership.receiver;
+    tracing::info!(cid, bot_id = %bot_id, room_size = membership.members, "ws client connected");
 
     let mut ws = fastwebsockets::FragmentCollector::new(fut.await?);
     let mut last_handshake_time = tokio::time::Instant::now();
 
+    // Each branch must be cancellation-safe: when one fires, the others are
+    // dropped mid-poll and re-polled next iteration.
+    //   - broadcast::recv  — safe: a dropped recv future loses no buffered item.
+    //   - sleep            — safe: a fresh timer is created each iteration.
+    //   - ws.read_frame    — assumed safe (fastwebsockets buffers internally);
+    //     we never split a frame across iterations because we await it fully.
     loop {
         tokio::select! {
             Ok(frame) = ws.read_frame() => {
@@ -116,72 +116,21 @@ pub async fn handle_client(
         }
     }
 
-    app_state.remove_client_from_room(&bot_id, cid).await;
-    tracing::info!(cid, bot_id = %bot_id, "ws client disconnected");
+    let removed = app_state.rooms.leave(&bot_id).await;
+    tracing::info!(cid, bot_id = %bot_id, room_removed = removed, "ws client disconnected");
     Ok(())
 }
 
 impl AppState {
-    pub async fn get_or_create_room(
-        &self,
-        bot_id: &str,
-    ) -> Result<(broadcast::Sender<json::RoomMessage>, usize)> {
-        {
-            // Hashmap.get() cause RWLock.read()
-            let rooms = self.rooms.read().await;
-            if let Some(tx) = rooms.get(bot_id) {
-                let client_count = tx.receiver_count();
-
-                if client_count > self.config.room_capacity {
-                    return Err(anyhow!("maxout: room already has maximum clients"));
-                }
-
-                return Ok((tx.clone(), client_count));
-            }
-        }
-
-        let mut rooms = self.rooms.write().await;
-        let (tx, _rx) = broadcast::channel(32); // Same capacity as in gist
-        rooms.insert(bot_id.to_string(), tx.clone());
-
-        Ok((tx, 0))
-    }
-
-    pub async fn remove_client_from_room(&self, bot_id: &str, cid: usize) {
-        let mut should_remove_room = false;
-        let left_in_room = {
-            let rooms = self.rooms.read().await;
-            if let Some(tx) = rooms.get(bot_id) {
-                let count = tx.receiver_count();
-                if count <= 1 {
-                    should_remove_room = true;
-                }
-                count
-            } else {
-                0
-            }
-        };
-
-        if should_remove_room {
-            let mut rooms = self.rooms.write().await;
-            rooms.remove(bot_id);
-            tracing::debug!(bot_id = %bot_id, "removed empty room");
-        } else {
-            tracing::debug!(cid, bot_id = %bot_id, remaining = left_in_room, "client left room");
-        }
-    }
-
+    /// Encode a domain event as protobuf and broadcast it to a bot's room.
     pub async fn send_event_to_room_members(
         &self,
         room_id: &str,
         event: json::WSEvent,
     ) -> Result<()> {
         let data = crate::proto::encode(&crate::proto::ServerMessage::from(&event));
-        let rooms = self.rooms.read().await;
-        if let Some(tx) = rooms.get(room_id) {
-            tx.send(json::RoomMessage::Binary(data))?;
-        }
-
-        Ok(())
+        self.rooms
+            .send(room_id, json::RoomMessage::Binary(data))
+            .await
     }
 }

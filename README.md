@@ -113,7 +113,8 @@ server/src/
 │   ├── bot.rs        # bot lifecycle, config, admins, avatar proxy
 │   ├── webhook.rs    # Telegram webhook entrypoint
 │   └── layer.rs      # overlay token + test donation
-├── ws_server.rs      # per-client loop, room broadcast (fastwebsockets)
+├── ws_server.rs      # per-client loop (fastwebsockets)
+├── rooms.rs          # RoomRegistry: race-free per-bot broadcast rooms
 ├── proto.rs          # generated protobuf types + WSEvent → ServerMessage
 ├── ratelimit.rs      # RateLimiter trait + Redis/no-op impls
 ├── tg_api.rs         # Telegram Bot API client (hyper-based)
@@ -201,10 +202,14 @@ variable is missing.
   }
   ```
 
-- **Per-bot WebSocket rooms** with `tokio::sync::broadcast`. The room is
-  created on the first subscriber and torn down on the last unsubscribe;
-  `RwLock<HashMap<_, _>>` is the right shape because reads (every donation
-  event) dominate writes (subscribe/unsubscribe).
+- **Per-bot WebSocket rooms** with `tokio::sync::broadcast`, behind a
+  [`RoomRegistry`](server/src/rooms.rs). The room is created on the first
+  subscriber and dropped on the last unsubscribe; `RwLock<HashMap<_, _>>`
+  fits because reads (every donation event) dominate writes. The registry
+  subscribes *while holding a lock* and re-checks with `entry()` on the
+  create path, so two clients racing on the same bot can't orphan a
+  subscriber on a clobbered channel — covered by a concurrency test that
+  fans 50 simultaneous joins into one room.
 
 - **Binary protobuf on the overlay WebSocket.** Events go out as
   `Frame::binary` carrying an encoded
