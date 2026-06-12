@@ -8,6 +8,9 @@ default = []
 # Enables the PostgreSQL-backed BotStore (deadpool pool + tokio-postgres).
 # Without it the binary uses the embedded SQLite store and pulls no PG deps.
 postgres = ["dep:deadpool-postgres", "dep:tokio-postgres"]
+# Enables Redis-backed webhook rate limiting (deadpool-redis). Without it the
+# rate limiter is a no-op and no Redis deps are compiled.
+redis = ["dep:deadpool-redis", "dep:redis"]
 
 [build-dependencies]
 prost-build = "0.13"
@@ -23,6 +26,10 @@ prost = "0.13"
 # PostgreSQL backend (optional, behind the `postgres` feature).
 deadpool-postgres = { version = "0.14", optional = true }
 tokio-postgres = { version = "0.7", optional = true }
+
+# Redis rate limiting (optional, behind the `redis` feature).
+deadpool-redis = { version = "0.18", optional = true }
+redis = { version = "0.27", optional = true }
 
 axum = {version = "0.7", features = ["tokio", "http1", "macros", "multipart"]}
 tokio = { version = "1", features = ["full", "macros", "time"] }

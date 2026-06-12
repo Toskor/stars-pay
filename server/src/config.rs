@@ -38,6 +38,12 @@ pub struct Config {
     pub days_since_last_payment_for_block: u64,
     pub days_since_last_payment_for_notification: u64,
     pub procent_for_main_bot: f32,
+
+    // Rate limiting (webhook). When `redis_url` is set and the `redis`
+    // feature is built, the webhook endpoint is throttled per bot.
+    pub redis_url: Option<String>,
+    pub webhook_rate_limit: u32,
+    pub webhook_rate_window_secs: u64,
 }
 
 impl Config {
@@ -117,6 +123,17 @@ impl Config {
                 .unwrap_or(28);
         let procent_for_main_bot = std::env::var("PROCENT_FOR_MAIN_BOT")?.parse()?;
 
+        // Rate limiting
+        let redis_url = std::env::var("REDIS_URL").ok();
+        let webhook_rate_limit = std::env::var("WEBHOOK_RATE_LIMIT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30);
+        let webhook_rate_window_secs = std::env::var("WEBHOOK_RATE_WINDOW_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(60);
+
         Ok(Config {
             main_bot_id,
             main_bot_token,
@@ -140,6 +157,9 @@ impl Config {
             days_since_last_payment_for_block,
             days_since_last_payment_for_notification,
             procent_for_main_bot,
+            redis_url,
+            webhook_rate_limit,
+            webhook_rate_window_secs,
         })
     }
 }

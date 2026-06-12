@@ -17,6 +17,13 @@ pub async fn webhook_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<json::Update>,
 ) -> AppResult<Json<Value>> {
+    // Throttle per bot before touching the DB or Telegram API. A misbehaving
+    // (or spoofed) webhook source can't exhaust downstream resources.
+    if !state.rate_limiter.check(&bot_id).await.unwrap_or(true) {
+        tracing::warn!(bot_id = %bot_id, "webhook rate limit exceeded");
+        return Err(AppError::TooManyRequests("rate limit exceeded".into()));
+    }
+
     let (security_ok, token) = state
         .with_record(&bot_id, |bot| {
             let ok = auth::check_secret_token(&bot.secret_token, &headers);

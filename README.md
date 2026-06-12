@@ -25,6 +25,8 @@ The Rust backend is the focus of this repository.
 - **rusqlite / async-rusqlite** — embedded SQLite persistence (default)
 - **deadpool-postgres / tokio-postgres** — optional PostgreSQL backend
   behind the `postgres` feature, selected at runtime by `DATABASE_URL`
+- **deadpool-redis / redis** — optional webhook rate limiting behind the
+  `redis` feature, selected at runtime by `REDIS_URL`
 - **hyper 1** + custom HTTP client — outbound calls to Telegram and S3
   (no `reqwest`, kept the dependency surface small)
 - **aws-sdk-s3** — Scaleway-compatible S3 for hosting Mini App / overlay
@@ -113,6 +115,7 @@ server/src/
 │   └── layer.rs      # overlay token + test donation
 ├── ws_server.rs      # per-client loop, room broadcast (fastwebsockets)
 ├── proto.rs          # generated protobuf types + WSEvent → ServerMessage
+├── ratelimit.rs      # RateLimiter trait + Redis/no-op impls
 ├── tg_api.rs         # Telegram Bot API client (hyper-based)
 ├── http.rs           # outbound HTTP client + TLS + gzip
 ├── s3_api.rs         # Scaleway S3 client setup
@@ -211,6 +214,14 @@ variable is missing.
   driven from `build.rs` and uses a vendored `protoc`, so the build
   doesn't depend on a system protobuf install.
 
+- **Optional Redis rate limiting** on the webhook, behind a
+  [`RateLimiter`](server/src/ratelimit.rs) trait. Default is a no-op; with
+  `--features redis` and `REDIS_URL` set it becomes a fixed-window counter
+  (`INCR` + `EXPIRE`) keyed per bot. Keeping the counter in Redis rather
+  than process memory means the limit holds across multiple server
+  instances. The check runs before any DB or Telegram call, so a spoofed
+  webhook source can't exhaust downstream resources.
+
 ---
 
 ## Roadmap
@@ -222,7 +233,7 @@ A few things deliberately left out, in priority order:
 - TLS for the Postgres connection (the demo backend uses `NoTls`).
 - Replace the bot token field with a salted hash so a DB leak doesn't
   hand attackers control of every streamer's bot.
-- Per-bot rate limiting on the webhook endpoint.
+- Sliding-window (vs fixed-window) rate limiting via a Redis sorted set.
 - Prometheus metrics + `/healthz`.
 
 ---

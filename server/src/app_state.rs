@@ -76,12 +76,14 @@ pub struct AppState {
     pub db: Arc<dyn BotStore>,
     pub rooms: RwLock<Rooms>,
     pub s3_client: Client,
+    pub rate_limiter: Arc<dyn crate::ratelimit::RateLimiter>,
     pub config: Config,
 }
 
 impl AppState {
     pub async fn new(config: Config) -> Result<Self> {
         let db = db::connect(&config).await?;
+        let rate_limiter = crate::ratelimit::build(&config)?;
 
         let cache = Mutex::new(LruCache::new(config.cache_size));
         let rooms = RwLock::new(HashMap::new());
@@ -93,6 +95,7 @@ impl AppState {
             db,
             rooms,
             s3_client,
+            rate_limiter,
             config,
         })
     }

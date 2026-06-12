@@ -11,6 +11,7 @@ pub enum AppError {
     Unauthorized(String),
     Forbidden(String),
     BadRequest(String),
+    TooManyRequests(String),
     Internal(String),
 }
 
@@ -21,6 +22,7 @@ impl AppError {
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -31,6 +33,7 @@ impl AppError {
             | AppError::Unauthorized(m)
             | AppError::Forbidden(m)
             | AppError::BadRequest(m)
+            | AppError::TooManyRequests(m)
             | AppError::Internal(m) => m,
         }
     }
@@ -103,6 +106,11 @@ mod tests {
                 AppError::BadRequest("bad".into()),
                 StatusCode::BAD_REQUEST,
                 "bad",
+            ),
+            (
+                AppError::TooManyRequests("slow down".into()),
+                StatusCode::TOO_MANY_REQUESTS,
+                "slow down",
             ),
             (
                 AppError::Internal("boom".into()),

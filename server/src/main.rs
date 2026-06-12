@@ -21,6 +21,7 @@ mod http;
 pub mod json;
 pub mod main_bot;
 pub mod proto;
+pub mod ratelimit;
 pub mod s3_api;
 mod tg_api;
 pub mod ws_server;
