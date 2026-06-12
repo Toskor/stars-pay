@@ -1,0 +1,33 @@
+// Wire protocol for the donation overlay WebSocket.
+//
+// Servers push `ServerMessage` framed as binary WebSocket frames. The oneof
+// keeps the envelope versionable: adding a new event variant is a
+// non-breaking change for clients that ignore unknown fields.
+syntax = "proto3";
+
+package tg_stars.v1;
+
+message ServerMessage {
+  oneof payload {
+    DonationEvent donation = 1;
+    GoalEvent goal = 2;
+    ErrorEvent error = 3;
+  }
+}
+
+message DonationEvent {
+  string from = 1;
+  uint32 total_amount = 2;
+  string invoice_payload = 3;
+  string message = 4;
+}
+
+// Goal config is forwarded as the original JSON for now — the schema is wide
+// and still in flux on the frontend; promote to typed fields once stable.
+message GoalEvent {
+  string props_json = 1;
+}
+
+message ErrorEvent {
+  string message = 1;
+}

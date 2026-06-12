@@ -3,8 +3,15 @@ name = "tg-stars"
 version = "0.1.0"
 edition = "2021"
 
+[build-dependencies]
+prost-build = "0.13"
+protoc-bin-vendored = "3.1"
+
 [dependencies]
 anyhow = "1.0"
+
+# WebSocket wire format (binary protobuf over WS frames).
+prost = "0.13"
 
 axum = {version = "0.7", features = ["tokio", "http1", "macros", "multipart"]}
 tokio = { version = "1", features = ["full", "macros", "time"] }

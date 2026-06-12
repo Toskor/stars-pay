@@ -30,6 +30,9 @@ The Rust backend is the focus of this repository.
 - **tracing** + `tracing-subscriber` — structured logging, `RUST_LOG` filter
 - **lru** — bot record cache in front of SQLite
 - **hmac / sha2** — Telegram Mini App `initData` signature validation
+- **prost** + Protobuf — binary wire format on the overlay WebSocket
+  (see [`server/proto/events.proto`](server/proto/events.proto));
+  protoc is vendored via `protoc-bin-vendored`, no system install needed
 
 Frontend (SvelteKit Mini App + overlay) lives on the [`frontend`](../../tree/frontend)
 branch. Its prebuilt HTML is checked into this branch under
@@ -104,6 +107,7 @@ server/src/
 │   ├── webhook.rs    # Telegram webhook entrypoint
 │   └── layer.rs      # overlay token + test donation
 ├── ws_server.rs      # per-client loop, room broadcast (fastwebsockets)
+├── proto.rs          # generated protobuf types + WSEvent → ServerMessage
 ├── tg_api.rs         # Telegram Bot API client (hyper-based)
 ├── http.rs           # outbound HTTP client + TLS + gzip
 ├── s3_api.rs         # Scaleway S3 client setup
@@ -188,6 +192,14 @@ variable is missing.
   created on the first subscriber and torn down on the last unsubscribe;
   `RwLock<HashMap<_, _>>` is the right shape because reads (every donation
   event) dominate writes (subscribe/unsubscribe).
+
+- **Binary protobuf on the overlay WebSocket.** Events go out as
+  `Frame::binary` carrying an encoded
+  [`ServerMessage`](server/proto/events.proto) (oneof: donation / goal /
+  error). The schema is versioned via the `tg_stars.v1` package; adding a
+  variant is a non-breaking change for older clients. `prost-build` is
+  driven from `build.rs` and uses a vendored `protoc`, so the build
+  doesn't depend on a system protobuf install.
 
 ---
 

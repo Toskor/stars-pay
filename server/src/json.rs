@@ -300,7 +300,8 @@ pub struct RefreshLayerTokenQueryParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RoomMessage {
-    Text(Vec<u8>),
+    /// Encoded protobuf `ServerMessage`, delivered as a binary WS frame.
+    Binary(Vec<u8>),
     CloseConnection(usize),
     CloseRoom(String),
 }

@@ -86,8 +86,8 @@ pub async fn handle_client(
                             break;
                         }
                     }
-                    json::RoomMessage::Text(text_data) => {
-                        let frame = Frame::text(Payload::Owned(text_data));
+                    json::RoomMessage::Binary(data) => {
+                        let frame = Frame::binary(Payload::Owned(data));
                         if let Err(e) = ws.write_frame(frame).await {
                             tracing::warn!(cid, bot_id = %bot_id, error = %e, "error writing ws frame");
                             break;
@@ -176,10 +176,10 @@ impl AppState {
         room_id: &str,
         event: json::WSEvent,
     ) -> Result<()> {
-        let data = serde_json::to_vec(&event)?;
+        let data = crate::proto::encode(&crate::proto::ServerMessage::from(&event));
         let rooms = self.rooms.read().await;
         if let Some(tx) = rooms.get(room_id) {
-            tx.send(json::RoomMessage::Text(data))?;
+            tx.send(json::RoomMessage::Binary(data))?;
         }
 
         Ok(())
