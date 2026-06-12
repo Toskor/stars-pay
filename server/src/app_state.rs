@@ -3,11 +3,12 @@ use anyhow::Result;
 use aws_sdk_s3::Client;
 use lru::LruCache;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::{
     config::Config,
-    db::{DBBot, DataBase},
+    db::{self, BotStore, DBBot},
     json, s3_api, tg_api, HTML_BLOCKED_APP, HTML_GOAL_APP, HTML_LAYER, HTML_MAIN_BOT_MINI_APP,
     HTML_MINI_APP,
 };
@@ -72,7 +73,7 @@ pub struct ControlledBots {
 //todo sometimes long delay in webhook (mb when change webhook url)
 pub struct AppState {
     pub cache: Mutex<LruCache<String, DBBot>>,
-    pub db: DataBase,
+    pub db: Arc<dyn BotStore>,
     pub rooms: RwLock<Rooms>,
     pub s3_client: Client,
     pub config: Config,
@@ -80,9 +81,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(config: Config) -> Result<Self> {
-        let db = DataBase::new_sql_lite(&config.db_path)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to open database at {}: {}", config.db_path, e))?;
+        let db = db::connect(&config).await?;
 
         let cache = Mutex::new(LruCache::new(config.cache_size));
         let rooms = RwLock::new(HashMap::new());

@@ -3,15 +3,26 @@ name = "tg-stars"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+# Enables the PostgreSQL-backed BotStore (deadpool pool + tokio-postgres).
+# Without it the binary uses the embedded SQLite store and pulls no PG deps.
+postgres = ["dep:deadpool-postgres", "dep:tokio-postgres"]
+
 [build-dependencies]
 prost-build = "0.13"
 protoc-bin-vendored = "3.1"
 
 [dependencies]
 anyhow = "1.0"
+async-trait = "0.1"
 
 # WebSocket wire format (binary protobuf over WS frames).
 prost = "0.13"
+
+# PostgreSQL backend (optional, behind the `postgres` feature).
+deadpool-postgres = { version = "0.14", optional = true }
+tokio-postgres = { version = "0.7", optional = true }
 
 axum = {version = "0.7", features = ["tokio", "http1", "macros", "multipart"]}
 tokio = { version = "1", features = ["full", "macros", "time"] }

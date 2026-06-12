@@ -22,7 +22,9 @@ The Rust backend is the focus of this repository.
 - **Rust** (edition 2021), `tokio` async runtime
 - **axum 0.7** — HTTP routing + extractors
 - **fastwebsockets** — per-bot WebSocket rooms (overlay fan-out)
-- **rusqlite / async-rusqlite** — single-file SQLite persistence
+- **rusqlite / async-rusqlite** — embedded SQLite persistence (default)
+- **deadpool-postgres / tokio-postgres** — optional PostgreSQL backend
+  behind the `postgres` feature, selected at runtime by `DATABASE_URL`
 - **hyper 1** + custom HTTP client — outbound calls to Telegram and S3
   (no `reqwest`, kept the dependency surface small)
 - **aws-sdk-s3** — Scaleway-compatible S3 for hosting Mini App / overlay
@@ -99,7 +101,10 @@ server/src/
 ├── config.rs         # env → Config struct, fails fast at boot
 ├── error.rs          # AppError + IntoResponse, single mapping point
 ├── app_state.rs      # Arc<AppState>: cache, db, rooms, s3, config
-├── db.rs             # SQLite layer (async-rusqlite)
+├── db/
+│   ├── mod.rs        # BotStore trait + connect() factory
+│   ├── sqlite.rs     # SqliteStore (async-rusqlite), default backend
+│   └── postgres.rs   # PostgresStore (deadpool), `postgres` feature
 ├── handlers.rs       # ws_handler, sound_handler + submodule re-exports
 ├── handlers/
 │   ├── auth.rs       # FromRequestParts extractors for Mini App auth
@@ -168,10 +173,15 @@ variable is missing.
   connection reuse, gzip, and TLS for the Telegram and S3 paths.
 - **Static frontend embedded via `include_str!`**: the server is a single
   binary; nothing to serve from disk in production, deploy is `scp` + run.
-- **SQLite is fine.** ~100 bots, ~100 admins each. An LRU cache in front
-  of the DB removes the hot-path read cost. A `bot_admins` table would be
-  the natural next step if scale demanded it (today the admin list is a
-  JSON column).
+- **Storage behind a `BotStore` trait.** Handlers and `AppState` depend on
+  `Arc<dyn BotStore>`, not a concrete database. The default
+  [`SqliteStore`](server/src/db/sqlite.rs) is embedded and zero-config;
+  a [`PostgresStore`](server/src/db/postgres.rs) (deadpool pool +
+  `tokio-postgres`) is compiled in with `--features postgres` and chosen at
+  runtime by `DATABASE_URL`. The Postgres schema uses a native `BIGINT[]`
+  admins column (`$1 = ANY(admins)` + GIN index) instead of the SQLite
+  JSON-in-text fallback. SQLite is fine at this scale (~100 bots) and an
+  LRU cache fronts the hot read path either way.
 - **Typed errors at the HTTP boundary** (`AppError` → `IntoResponse`),
   `anyhow` inside the business layer. Handlers stay short:
 
@@ -207,9 +217,9 @@ variable is missing.
 
 A few things deliberately left out, in priority order:
 
-- Normalize `bot_admins` into its own table (current JSON column works at
-  this scale but loses you `JOIN`s).
-- Proper migration tool (currently the schema is created in `db.rs`).
+- Proper migration tool (schema is currently created on first connect in
+  each `BotStore` impl).
+- TLS for the Postgres connection (the demo backend uses `NoTls`).
 - Replace the bot token field with a salted hash so a DB leak doesn't
   hand attackers control of every streamer's bot.
 - Per-bot rate limiting on the webhook endpoint.

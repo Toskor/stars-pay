@@ -1,68 +1,20 @@
-//! SQLite persistence layer. Bots and per-bot config are stored in a single
-//! `bots` table; `admins` is a JSON array (good enough at this scale).
+//! SQLite-backed [`BotStore`]. Bots and per-bot config live in two tables;
+//! `admins` is a JSON array column (good enough at this scale — see the
+//! roadmap for the normalized-table alternative).
 
 use anyhow::Result;
 use async_rusqlite::{rusqlite::named_params, Connection};
+use async_trait::async_trait;
 use rusqlite::functions::FunctionFlags;
 
-/// Persisted bot record.
-#[derive(Debug, Clone)]
-pub struct DBBot {
-    ///bot username without "bot" end
-    pub id: String,
+use super::{BotDebtParams, BotStore, DBBot};
 
-    pub token: String,
-    pub secret_token: String,
-    pub ws_token: String,
-
-    pub owner: u64,
-    // admins id vec in json format
-    pub admins: Vec<u64>,
-    // Last payment date
-    pub last_payment_date: Option<u64>,
-    // Stars debt
-    pub star_debt: f64,
-    pub blocked: bool,
-}
-impl DBBot {
-    pub fn new(
-        id: String,
-        token: String,
-        secret_token: String,
-        ws_token: String,
-        owner: u64,
-        admins: Vec<u64>,
-        blocked: bool,
-    ) -> Self {
-        DBBot {
-            id,
-            token,
-            secret_token,
-            ws_token,
-            owner,
-            admins,
-            last_payment_date: None,
-            star_debt: 0.0,
-            blocked,
-        }
-    }
+pub struct SqliteStore {
+    conn: Connection,
 }
 
-#[derive(Debug, Clone)]
-pub struct BotDebtParams {
-    pub id: String,
-    pub last_payment_date: Option<u64>,
-    pub star_debt: f64,
-    pub blocked: bool,
-}
-
-pub struct DataBase {
-    pub conn: Connection,
-}
-
-//todo fn update
-impl DataBase {
-    pub async fn new_sql_lite(path: &str) -> Result<Self> {
+impl SqliteStore {
+    pub async fn open(path: &str) -> Result<Self> {
         let conn = Connection::open(path).await?;
 
         conn.call(move |conn| {
@@ -110,7 +62,6 @@ impl DataBase {
         })
         .await?;
 
-        //todo improve sql index to use in get_bots_by_admin_id
         conn.call(move |conn| {
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS admins_contains ON bots ( admins_contains(admins, 1) )",
@@ -121,15 +72,18 @@ impl DataBase {
 
         Ok(Self { conn })
     }
+}
 
-    pub async fn get_bots_by_admin_id(&self, admin_id: u64) -> Result<Vec<DBBot>> {
+#[async_trait]
+impl BotStore for SqliteStore {
+    async fn get_bots_by_admin_id(&self, admin_id: u64) -> Result<Vec<DBBot>> {
         let conn = &self.conn;
         let search_pattern = format!("%{}%", admin_id);
 
         let bots = conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    "SELECT id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked FROM bots 
+                    "SELECT id, token, secret_token, ws_token, owner, admins, last_payment_date, star_debt, blocked FROM bots
                     WHERE admins LIKE :search_pattern",
                 )?;
                 let query_result =
@@ -175,7 +129,7 @@ impl DataBase {
         Ok(bots)
     }
 
-    pub async fn get_bots_by_owner_id(&self, owner_id: u64) -> Result<Vec<DBBot>> {
+    async fn get_bots_by_owner_id(&self, owner_id: u64) -> Result<Vec<DBBot>> {
         let conn = &self.conn;
         let bots = conn
             .call(move |conn| {
@@ -209,7 +163,7 @@ impl DataBase {
         Ok(bots)
     }
 
-    pub async fn get_bot(&self, bot_id: String) -> Result<DBBot> {
+    async fn get_bot(&self, bot_id: String) -> Result<DBBot> {
         let conn = &self.conn;
 
         let bot = conn
@@ -250,12 +204,7 @@ impl DataBase {
         Ok(bot)
     }
 
-    pub async fn insert_bot(
-        &self,
-        bot: DBBot,
-        app_config: String,
-        goal_config: String,
-    ) -> Result<()> {
+    async fn insert_bot(&self, bot: DBBot, app_config: String, goal_config: String) -> Result<()> {
         let conn = &self.conn;
 
         let admins_json = serde_json::to_string(&bot.admins)?;
@@ -292,7 +241,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_bot(&self, bot: DBBot) -> Result<()> {
+    async fn update_bot(&self, bot: DBBot) -> Result<()> {
         let conn = &self.conn;
 
         let admins_json = serde_json::to_string(&bot.admins)?;
@@ -318,7 +267,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_app_config(&self, bot_id: String, app_config: String) -> Result<()> {
+    async fn update_app_config(&self, bot_id: String, app_config: String) -> Result<()> {
         let conn = &self.conn;
 
         conn.call(move |conn| {
@@ -335,7 +284,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_goal_config(&self, bot_id: String, goal_config: String) -> Result<()> {
+    async fn update_goal_config(&self, bot_id: String, goal_config: String) -> Result<()> {
         let conn = &self.conn;
 
         conn.call(move |conn| {
@@ -352,7 +301,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn contains_bot(&self, bot_id: String) -> Result<bool> {
+    async fn contains_bot(&self, bot_id: String) -> Result<bool> {
         let conn = &self.conn;
         let count: i64 = conn
             .call(move |conn| {
@@ -368,7 +317,7 @@ impl DataBase {
         Ok(count > 0)
     }
 
-    pub async fn get_app_configs(&self) -> Result<Vec<(String, String)>> {
+    async fn get_app_configs(&self) -> Result<Vec<(String, String)>> {
         let conn = &self.conn;
         let bots_config = conn
             .call(move |conn| {
@@ -391,7 +340,7 @@ impl DataBase {
         Ok(bots_config)
     }
 
-    pub async fn get_app_config(&self, bot_id: String) -> Result<String> {
+    async fn get_app_config(&self, bot_id: String) -> Result<String> {
         let conn = &self.conn;
         let app_config = conn
             .call(move |conn| {
@@ -405,7 +354,7 @@ impl DataBase {
         Ok(app_config)
     }
 
-    pub async fn get_goal_config(&self, bot_id: String) -> Result<String> {
+    async fn get_goal_config(&self, bot_id: String) -> Result<String> {
         let conn = &self.conn;
         let goal_config = conn
             .call(move |conn| {
@@ -419,30 +368,7 @@ impl DataBase {
         Ok(goal_config)
     }
 
-    pub async fn get_goal_configs(&self) -> Result<Vec<(String, String)>> {
-        let conn = &self.conn;
-        let bots_config = conn
-            .call(move |conn| {
-                let mut stmt = conn.prepare_cached("SELECT id, goal_config FROM configs")?;
-                let bots_map = stmt.query_map([], |row| {
-                    let id: String = row.get(0)?;
-                    let goal_config: String = row.get(1)?;
-                    Ok((id, goal_config))
-                })?;
-                let mut bots_config: Vec<(String, String)> = vec![];
-
-                for bot in bots_map.into_iter() {
-                    let bot_config = bot?;
-                    bots_config.push(bot_config);
-                }
-                Ok::<Vec<(String, String)>, async_rusqlite::Error>(bots_config)
-            })
-            .await?;
-
-        Ok(bots_config)
-    }
-
-    pub async fn get_bot_token(&self, bot_id: String) -> Result<String> {
+    async fn get_bot_token(&self, bot_id: String) -> Result<String> {
         let conn = &self.conn;
         let token = conn
             .call(move |conn| {
@@ -456,7 +382,7 @@ impl DataBase {
         Ok(token)
     }
 
-    pub async fn get_bot_ws_token(&self, bot_id: String) -> Result<String> {
+    async fn get_bot_ws_token(&self, bot_id: String) -> Result<String> {
         let conn = &self.conn;
         let token = conn
             .call(move |conn| {
@@ -470,7 +396,7 @@ impl DataBase {
         Ok(token)
     }
 
-    pub async fn add_bot_admin(&self, bot_id: String, admin_id: u64) -> Result<()> {
+    async fn add_bot_admin(&self, bot_id: String, admin_id: u64) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {
             let mut stmt = conn.prepare_cached("SELECT admins FROM bots WHERE id = :id")?;
@@ -495,7 +421,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn remove_bot_admin(&self, bot_id: String, admin_id: u64) -> Result<()> {
+    async fn remove_bot_admin(&self, bot_id: String, admin_id: u64) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {
             let mut stmt = conn.prepare_cached("SELECT admins FROM bots WHERE id = :id")?;
@@ -516,10 +442,9 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
+    async fn remove_bot(&self, user_id: u64, bot_id: String) -> Result<()> {
         let conn = &self.conn;
 
-        // First, check if the user is the owner of the bot
         let bot_id_ = bot_id.clone();
         let owner = conn
             .call(move |conn| {
@@ -530,12 +455,10 @@ impl DataBase {
             })
             .await?;
 
-        // If the user is not the owner, return an error
         if owner != user_id {
             return Err(anyhow::anyhow!("Only owner can delete bot"));
         }
 
-        // If the user is the owner, proceed with deletion
         conn.call(move |conn| {
             let tx = conn.transaction()?;
             tx.execute(
@@ -552,7 +475,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn change_bot_token(
+    async fn change_bot_token(
         &self,
         user_id: u64,
         bot_id: String,
@@ -560,7 +483,6 @@ impl DataBase {
     ) -> Result<()> {
         let conn = &self.conn;
 
-        // First, check if the user is the owner of the bot
         let bot_id_ = bot_id.clone();
         let owner = conn
             .call(move |conn| {
@@ -585,7 +507,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_bot_layer_token(&self, bot_id: String, layer_token: String) -> Result<()> {
+    async fn update_bot_layer_token(&self, bot_id: String, layer_token: String) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {
             conn.execute(
@@ -598,33 +520,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn update_last_payment_date(&self, bot_id: String, timestamp: i64) -> Result<()> {
-        let conn = &self.conn;
-        conn.call(move |conn| {
-            conn.execute(
-                "UPDATE bots SET last_payment_date = :timestamp WHERE id = :id",
-                named_params! { ":timestamp": &timestamp, ":id": &bot_id },
-            )?;
-            Ok::<(), async_rusqlite::Error>(())
-        })
-        .await?;
-        Ok(())
-    }
-
-    pub async fn update_stars_balance(&self, bot_id: String, stars: i64) -> Result<()> {
-        let conn = &self.conn;
-        conn.call(move |conn| {
-            conn.execute(
-                "UPDATE bots SET star_debt = :stars WHERE id = :id",
-                named_params! { ":stars": &stars, ":id": &bot_id },
-            )?;
-            Ok::<(), async_rusqlite::Error>(())
-        })
-        .await?;
-        Ok(())
-    }
-
-    pub async fn increase_stars_debt(&self, bot_id: String, stars_amount: f32) -> Result<()> {
+    async fn increase_stars_debt(&self, bot_id: String, stars_amount: f32) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {
             conn.execute(
@@ -637,7 +533,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn decrease_debt(&self, bot_id: String, stars_amount: i64) -> Result<()> {
+    async fn decrease_debt(&self, bot_id: String, stars_amount: i64) -> Result<()> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
@@ -650,7 +546,7 @@ impl DataBase {
                 named_params! {
                     ":timestamp": &timestamp,
                     ":stars": &stars_amount,
-                    ":id": &bot_id 
+                    ":id": &bot_id
                 },
             )?;
             Ok::<(), async_rusqlite::Error>(())
@@ -659,7 +555,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn set_bot_blocked(&self, bot_id: String, blocked: bool) -> Result<()> {
+    async fn set_bot_blocked(&self, bot_id: String, blocked: bool) -> Result<()> {
         let conn = &self.conn;
         conn.call(move |conn| {
             conn.execute(
@@ -672,7 +568,7 @@ impl DataBase {
         Ok(())
     }
 
-    pub async fn debt_params(&self, bot_id: String) -> Result<(Option<u64>, f64, bool)> {
+    async fn debt_params(&self, bot_id: String) -> Result<(Option<u64>, f64, bool)> {
         let conn = &self.conn;
         let params = conn
             .call(move |conn| {
@@ -692,8 +588,7 @@ impl DataBase {
         Ok(params)
     }
 
-    /// Get debt parameters for all bots except the main bot in one query
-    pub async fn get_all_bots_debt_params(&self, main_bot_id: &str) -> Result<Vec<BotDebtParams>> {
+    async fn get_all_bots_debt_params(&self, main_bot_id: &str) -> Result<Vec<BotDebtParams>> {
         let conn = &self.conn;
         let main_bot_id = main_bot_id.to_string();
         let params = conn

@@ -19,6 +19,9 @@ pub struct Config {
 
     // Database
     pub db_path: String,
+    /// PostgreSQL connection URL. When set (and the `postgres` feature is
+    /// built), the Postgres-backed store is used instead of SQLite.
+    pub database_url: Option<String>,
 
     // S3 Configuration
     pub s3_bucket_name: String,
@@ -72,6 +75,7 @@ impl Config {
                 .to_string_lossy()
                 .into_owned()
         });
+        let database_url = std::env::var("DATABASE_URL").ok();
 
         // S3 Configuration
         let s3_bucket_name = std::env::var("S3_BUCKET_NAME")
@@ -123,6 +127,7 @@ impl Config {
             port,
             cors_origin,
             db_path,
+            database_url,
             s3_bucket_name,
             s3_website,
             s3_access_key,
